@@ -1,6 +1,6 @@
 import React from 'react';
 import { Modal } from '../ui/Modal';
-import type { VirtualCard } from '../../types';
+import { VirtualCard } from '../../types';
 
 interface InfoModalProps {
   isOpen: boolean;
@@ -36,6 +36,20 @@ export function InfoModal({ isOpen, onClose, card }: InfoModalProps) {
           <div>
             <label className="block text-sm font-medium text-gray-700">Check-out</label>
             <p className="mt-1 text-sm text-gray-900">{card.checkOutDate}</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Balance</label>
+            <p className="mt-1 text-sm text-gray-900">{card.currency} {card.remainingBalance}</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Status</label>
+            <span className={`mt-1 inline-flex px-2 py-1 text-xs font-medium rounded-full
+              ${card.status === 'active' ? 'bg-green-100 text-green-800' : ''}
+              ${card.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : ''}
+              ${card.status === 'completed' ? 'bg-blue-100 text-blue-800' : ''}`}
+            >
+              {card.status.charAt(0).toUpperCase() + card.status.slice(1)}
+            </span>
           </div>
         </div>
       </div>

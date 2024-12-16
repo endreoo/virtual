@@ -1,13 +1,33 @@
 export interface VirtualCard {
-  id: string;
+  id: number;
   guestName: string;
-  hotelName: string;
+  guestFullName: string;
+  confirmationCode: string;
   checkInDate: string;
   checkOutDate: string;
+  arrivalTime: string;
+  bookingAmount: number;
   remainingBalance: number;
   currency: string;
-  status: 'active' | 'pending' | 'completed' | 'cancelled';
-  source: string;
+  status: string;
+  card_status: string;
+  cardNumber: string;
+  cvv: string;
+  expirationDate: string;
+  expiredCard: boolean;
+  admin_check: 'yes' | 'no';
+  admin_message: string;
+  notes: string;
+  roomType: string;
+  roomDetails: string;
+  specialRequests: string;
+  phoneNumber: string;
+  bookedOn: string;
+  bookingSource: string;
+  cancellationPolicy: string;
+  chargeBefore: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Payment {
