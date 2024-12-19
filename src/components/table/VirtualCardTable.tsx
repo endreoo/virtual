@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
-import { ArrowUpDown, Info, CreditCard, DollarSign, FileText, Edit3, XCircle, ChevronUp, ChevronDown } from 'lucide-react';
+import { ArrowUpDown, Info, DollarSign, FileText, Edit3, XCircle, ChevronUp, ChevronDown } from 'lucide-react';
 import type { VirtualCard } from '../../types/index';
 import { InfoModal } from '../modals/InfoModal';
-import { CardDetailsModal } from '../modals/CardDetailsModal';
 import { ChargeCardModal } from '../modals/ChargeCardModal';
 import { NotesModal } from '../modals/NotesModal';
 import { AdjustAmountModal } from '../modals/AdjustAmountModal';
@@ -17,7 +16,7 @@ interface VirtualCardTableProps {
   onSort: (key: keyof VirtualCard) => void;
 }
 
-type ModalType = 'info' | 'cardDetails' | 'charge' | 'notes' | 'adjust' | 'doNotCharge' | null;
+type ModalType = 'info' | 'charge' | 'notes' | 'adjust' | 'doNotCharge' | null;
 
 type ColumnConfig = {
   key: keyof VirtualCard;
@@ -137,13 +136,6 @@ export function VirtualCardTable({ cards, sortConfig, onSort }: VirtualCardTable
                       <Info className="h-5 w-5" />
                     </button>
                     <button 
-                      title="Card Details" 
-                      className="text-blue-600 hover:text-blue-800"
-                      onClick={() => openModal('cardDetails', card)}
-                    >
-                      <CreditCard className="h-5 w-5" />
-                    </button>
-                    <button 
                       title="Charge" 
                       className="text-green-600 hover:text-green-800"
                       onClick={() => openModal('charge', card)}
@@ -183,11 +175,6 @@ export function VirtualCardTable({ cards, sortConfig, onSort }: VirtualCardTable
         <>
           <InfoModal
             isOpen={activeModal === 'info'}
-            onClose={closeModal}
-            card={selectedCard}
-          />
-          <CardDetailsModal
-            isOpen={activeModal === 'cardDetails'}
             onClose={closeModal}
             card={selectedCard}
           />
