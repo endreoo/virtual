@@ -1,0 +1,141 @@
+[33mcommit ec00b8ddb913b01d8d2f37c859a851475da65a65[m[33m ([m[1;36mHEAD -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m
+Author: HotelOnline Admin <admin@hotelonline.co>
+Date:   Thu Dec 19 10:17:56 2024 +0300
+
+    Remove CardDetailsModal and its references
+
+[1mdiff --git a/src/components/modals/CardDetailsModal.tsx b/src/components/modals/CardDetailsModal.tsx[m
+[1mdeleted file mode 100644[m
+[1mindex dd88ac1..0000000[m
+[1m--- a/src/components/modals/CardDetailsModal.tsx[m
+[1m+++ /dev/null[m
+[36m@@ -1,79 +0,0 @@[m
+[31m-import React from 'react';[m
+[31m-import { Modal } from '../ui/Modal';[m
+[31m-import { VirtualCard } from '../../types';[m
+[31m-import { CreditCard } from 'lucide-react';[m
+[31m-[m
+[31m-interface CardDetailsModalProps {[m
+[31m-  isOpen: boolean;[m
+[31m-  onClose: () => void;[m
+[31m-  card: VirtualCard;[m
+[31m-}[m
+[31m-[m
+[31m-export function CardDetailsModal({ isOpen, onClose, card }: CardDetailsModalProps) {[m
+[31m-  // Mock card details - in a real app, these would come from the backend[m
+[31m-  const cardDetails = {[m
+[31m-    number: '4111 1111 1111 1234',[m
+[31m-    expiry: '12/25',[m
+[31m-    cvv: '123'[m
+[31m-  };[m
+[31m-[m
+[31m-  return ([m
+[31m-    <Modal isOpen={isOpen} onClose={onClose} title="Card Details">[m
+[31m-      <div className="space-y-6">[m
+[31m-        <div className="relative bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg p-6 text-white">[m
+[31m-          <div className="absolute top-4 right-4">[m
+[31m-            <CreditCard className="h-8 w-8 opacity-50" />[m
+[31m-          </div>[m
+[31m-          <div className="space-y-4">[m
+[31m-            <div>[m
+[31m-              <p className="text-sm opacity-75">Card Number</p>[m
+[31m-              <p className="font-mono text-xl">{cardDetails.number}</p>[m
+[31m-            </div>[m
+[31m-            <div className="flex justify-between">[m
+[31m-              <div>[m
+[31m-                <p className="text-sm opacity-75">Expiry</p>[m
+[31m-                <p className="font-mono">{cardDetails.expiry}</p>[m
+[31m-              </div>[m
+[31m-              <div>[m
+[31m-                <p className="text-sm opacity-75">CVV</p>[m
+[31m-                <p className="font-mono">{cardDetails.cvv}</p>[m
+[31m-              </div>[m
+[31m-            </div>[m
+[31m-            <div>[m
+[31m-              <p className="text-sm opacity-75">Card Holder</p>[m
+[31m-              <p className="font-medium">{card.guestName}</p>[m
+[31m-            </div>[m
+[31m-          </div>[m
+[31m-        </div>[m
+[31m-[m
+[31m-        <div className="bg-gray-50 rounded-lg p-4">[m
+[31m-          <h4 className="text-sm font-medium text-gray-700 mb-3">Card Information</h4>[m
+[31m-          <div className="grid grid-cols-2 gap-4">[m
+[31m-            <div>[m
+[31m-              <p className="text-sm text-gray-500">Balance</p>[m
+[31m-              <p className="font-medium">{card.currency} {card.remainingBalance}</p>[m
+[31m-            </div>[m
+[31m-            <div>[m
+[31m-              <p className="text-sm text-gray-500">Status</p>[m
+[31m-              <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full[m
+[31m-                ${card.status === 'active' ? 'bg-green-100 text-green-800' : ''}[m
+[31m-                ${card.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : ''}[m
+[31m-                ${card.status === 'completed' ? 'bg-blue-100 text-blue-800' : ''}`}[m
+[31m-              >[m
+[31m-                {card.status.charAt(0).toUpperCase() + card.status.slice(1)}[m
+[31m-              </span>[m
+[31m-            </div>[m
+[31m-            <div>[m
+[31m-              <p className="text-sm text-gray-500">Check-in</p>[m
+[31m-              <p className="font-medium">{card.checkInDate}</p>[m
+[31m-            </div>[m
+[31m-            <div>[m
+[31m-              <p className="text-sm text-gray-500">Check-out</p>[m
+[31m-              <p className="font-medium">{card.checkOutDate}</p>[m
+[31m-            </div>[m
+[31m-          </div>[m
+[31m-        </div>[m
+[31m-      </div>[m
+[31m-    </Modal>[m
+[31m-  );[m
+[31m-}[m
+\ No newline at end of file[m
+[1mdiff --git a/src/components/table/VirtualCardTable.tsx b/src/components/table/VirtualCardTable.tsx[m
+[1mindex cbfdf22..f35b7e6 100644[m
+[1m--- a/src/components/table/VirtualCardTable.tsx[m
+[1m+++ b/src/components/table/VirtualCardTable.tsx[m
+[36m@@ -1,8 +1,7 @@[m
+ import React, { useState } from 'react';[m
+[31m-import { ArrowUpDown, Info, CreditCard, DollarSign, FileText, Edit3, XCircle, ChevronUp, ChevronDown } from 'lucide-react';[m
+[32m+[m[32mimport { ArrowUpDown, Info, DollarSign, FileText, Edit3, XCircle, ChevronUp, ChevronDown } from 'lucide-react';[m
+ import type { VirtualCard } from '../../types/index';[m
+ import { InfoModal } from '../modals/InfoModal';[m
+[31m-import { CardDetailsModal } from '../modals/CardDetailsModal';[m
+ import { ChargeCardModal } from '../modals/ChargeCardModal';[m
+ import { NotesModal } from '../modals/NotesModal';[m
+ import { AdjustAmountModal } from '../modals/AdjustAmountModal';[m
+[36m@@ -17,7 +16,7 @@[m [minterface VirtualCardTableProps {[m
+   onSort: (key: keyof VirtualCard) => void;[m
+ }[m
+ [m
+[31m-type ModalType = 'info' | 'cardDetails' | 'charge' | 'notes' | 'adjust' | 'doNotCharge' | null;[m
+[32m+[m[32mtype ModalType = 'info' | 'charge' | 'notes' | 'adjust' | 'doNotCharge' | null;[m
+ [m
+ type ColumnConfig = {[m
+   key: keyof VirtualCard;[m
+[36m@@ -136,13 +135,6 @@[m [mexport function VirtualCardTable({ cards, sortConfig, onSort }: VirtualCardTable[m
+                     >[m
+                       <Info className="h-5 w-5" />[m
+                     </button>[m
+[31m-                    <button [m
+[31m-                      title="Card Details" [m
+[31m-                      className="text-blue-600 hover:text-blue-800"[m
+[31m-                      onClick={() => openModal('cardDetails', card)}[m
+[31m-                    >[m
+[31m-                      <CreditCard className="h-5 w-5" />[m
+[31m-                    </button>[m
+                     <button [m
+                       title="Charge" [m
+                       className="text-green-600 hover:text-green-800"[m
+[36m@@ -186,11 +178,6 @@[m [mexport function VirtualCardTable({ cards, sortConfig, onSort }: VirtualCardTable[m
+             onClose={closeModal}[m
+             card={selectedCard}[m
+           />[m
+[31m-          <CardDetailsModal[m
+[31m-            isOpen={activeModal === 'cardDetails'}[m
+[31m-            onClose={closeModal}[m
+[31m-            card={selectedCard}[m
+[31m-          />[m
+           <ChargeCardModal[m
+             isOpen={activeModal === 'charge'}[m
+             onClose={closeModal}[m

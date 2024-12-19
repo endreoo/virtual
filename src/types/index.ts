@@ -1,35 +1,46 @@
 export interface VirtualCard {
-  id: number;
+  id: string;
   guestName: string;
-  guestFullName: string;
-  Hotel: string;
   checkInDate: string;
   checkOutDate: string;
-  arrivalTime: string;
-  bookingAmount: number;
+  Hotel: string;
   remainingBalance: number;
-  currency: string;
   status: string;
-  card_status: string;
-  cardNumber: string;
-  cvv: string;
-  expirationDate: string;
-  expiredCard: boolean;
-  admin_check: 'yes' | 'no';
-  admin_message: string;
-  notes: string;
-  roomType: string;
-  roomDetails: string;
-  specialRequests: string;
-  phoneNumber: string;
-  bookedOn: string;
   bookingSource: string;
-  cancellationPolicy: string;
-  chargeBefore: string;
-  created_at: string;
-  updated_at: string;
-  fullSidePanelText: string;
+  currency: string;
 }
+
+export interface Transaction {
+  id: number | string;
+  cardId: number;
+  amount: number;
+  type: 'payment' | 'refund' | 'adjustment' | 'external';
+  source: 'flutterwave' | 'stripe' | 'manual' | 'system' | 'external';
+  description: string;
+  referenceNumber?: string;
+  createdAt: string;
+  balanceAfter: number;
+  status: 'success' | 'pending' | 'failed';
+  metadata?: Record<string, any>;
+}
+
+export type PaymentMethod = 'flutterwave' | 'stripe' | 'manual' | 'link' | 'doNotCharge' | null;
+
+export type ActiveTab = 'info' | 'payment' | 'notes' | 'transactions';
+
+export interface PaymentMethodOption {
+  id: PaymentMethod;
+  name: string;
+  icon?: string;
+  description: string;
+}
+
+export type SortDirection = 'asc' | 'desc';
+
+export type SortConfig = {
+  key: keyof VirtualCard | null;
+  direction: SortDirection;
+};
 
 export interface Payment {
   id: string;

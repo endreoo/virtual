@@ -1,22 +1,14 @@
 import React, { useState } from 'react';
-import { ArrowUpDown, Info, DollarSign, FileText, Edit3, XCircle, ChevronUp, ChevronDown } from 'lucide-react';
-import type { VirtualCard } from '../../types/index';
-import { InfoModal } from '../modals/InfoModal';
+import { ChevronUp, ChevronDown } from 'lucide-react';
+import type { VirtualCard, SortConfig } from '../../types';
 import { ChargeCardModal } from '../modals/ChargeCardModal';
-import { NotesModal } from '../modals/NotesModal';
-import { AdjustAmountModal } from '../modals/AdjustAmountModal';
-import { DoNotChargeModal } from '../modals/DoNotChargeModal';
 
 interface VirtualCardTableProps {
   cards: VirtualCard[];
-  sortConfig: {
-    key: keyof VirtualCard | null;
-    direction: 'asc' | 'desc';
-  };
+  sortConfig: SortConfig;
   onSort: (key: keyof VirtualCard) => void;
+  onUpdate?: (updatedCard: VirtualCard) => void;
 }
-
-type ModalType = 'info' | 'charge' | 'notes' | 'adjust' | 'doNotCharge' | null;
 
 type ColumnConfig = {
   key: keyof VirtualCard;
@@ -34,9 +26,27 @@ const columns: ColumnConfig[] = [
   { key: 'bookingSource', label: 'Source', width: '120px' }
 ];
 
-export function VirtualCardTable({ cards, sortConfig, onSort }: VirtualCardTableProps) {
-  const [activeModal, setActiveModal] = useState<ModalType>(null);
+export function VirtualCardTable({ cards, sortConfig, onSort, onUpdate }: VirtualCardTableProps): JSX.Element {
   const [selectedCard, setSelectedCard] = useState<VirtualCard | null>(null);
+  const [activeModal, setActiveModal] = useState<ModalType>(null);
+
+  const handleCardClick = (card: VirtualCard) => {
+    if (!card) return;
+    setSelectedCard(card);
+  };
+
+  const handleModalClose = () => {
+    setSelectedCard(null);
+    setActiveModal(null);
+  };
+
+  const handleCardUpdate = async (updatedCard: VirtualCard) => {
+    setSelectedCard(updatedCard);
+    
+    if (onUpdate) {
+      onUpdate(updatedCard);
+    }
+  };
 
   const renderSortIcon = (columnKey: keyof VirtualCard) => {
     if (sortConfig.key !== columnKey) {
@@ -47,14 +57,74 @@ export function VirtualCardTable({ cards, sortConfig, onSort }: VirtualCardTable
       : <ChevronDown className="w-4 h-4 text-blue-500" />;
   };
 
-  const openModal = (modal: ModalType, card: VirtualCard) => {
-    setSelectedCard(card);
-    setActiveModal(modal);
-  };
-
-  const closeModal = () => {
-    setActiveModal(null);
-    setSelectedCard(null);
+  const renderCell = (card: VirtualCard, column: ColumnConfig) => {
+    const value = card[column.key];
+    
+    switch (column.key) {
+      case 'status':
+        const status = value?.toString() || '';
+        if (!status || status === 'Unknown') {
+          return <span></span>;
+        }
+        const statusMap = {
+          'Active': { bg: 'bg-green-100', text: 'text-green-800' },
+          'Recent': { bg: 'bg-blue-100', text: 'text-blue-800' },
+          'Canceled': { bg: 'bg-red-100', text: 'text-red-800' },
+          'No-show': { bg: 'bg-yellow-100', text: 'text-yellow-800' },
+          'Reconciled - modified': { bg: 'bg-purple-100', text: 'text-purple-800' }
+        };
+        const { bg, text } = statusMap[status as keyof typeof statusMap] || { bg: '', text: '' };
+        return (
+          <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${bg} ${text}`}>
+            {status}
+          </span>
+        );
+      case 'remainingBalance':
+        const amount = Number(value) || 0;
+        return (
+          <div className="text-sm text-gray-900">
+            ${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </div>
+        );
+      case 'Hotel':
+        return (
+          <div className="text-sm text-gray-900 break-words leading-snug">
+            {value || 'N/A'}
+          </div>
+        );
+      case 'bookingSource':
+        const source = value?.toString() || 'Unknown';
+        const sourceMap = {
+          'Expedia': { color: 'text-blue-600' },
+          'Expedia Affiliate Network': { color: 'text-blue-800' },
+          'Hotels': { color: 'text-indigo-600' },
+          'Booking.com': { color: 'text-blue-500' },
+          'American Express': { color: 'text-purple-600' },
+          'Orbitz': { color: 'text-green-600' },
+          'Travelocity': { color: 'text-red-600' },
+          'Egencia': { color: 'text-orange-600' },
+          'Wotif': { color: 'text-yellow-600' }
+        };
+        const { color } = sourceMap[source as keyof typeof sourceMap] || { color: 'text-gray-600' };
+        return (
+          <div 
+            className={`text-sm ${color} truncate font-medium`}
+            title={source}
+          >
+            {source}
+          </div>
+        );
+      case 'checkInDate':
+      case 'checkOutDate':
+        const date = value ? new Date(value).toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric'
+        }) : 'N/A';
+        return <div className="text-sm text-gray-900">{date}</div>;
+      default:
+        return <div className="text-sm text-gray-900">{value?.toString() || 'N/A'}</div>;
+    }
   };
 
   return (
@@ -63,17 +133,16 @@ export function VirtualCardTable({ cards, sortConfig, onSort }: VirtualCardTable
         <table className="w-full table-fixed divide-y divide-gray-200">
           <colgroup>
             {columns.map((col) => (
-              <col key={col.key.toString()} style={{ width: col.width }} />
+              <col key={col.key} style={{ width: col.width }} />
             ))}
-            <col style={{ width: '120px' }} /> {/* Actions column */}
           </colgroup>
           <thead className="bg-gray-50">
             <tr>
               {columns.map((column) => (
                 <th
-                  key={column.key.toString()}
+                  key={column.key}
                   scope="col"
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 group"
                   style={{ width: column.width }}
                   onClick={() => onSort(column.key)}
                 >
@@ -83,88 +152,27 @@ export function VirtualCardTable({ cards, sortConfig, onSort }: VirtualCardTable
                   </div>
                 </th>
               ))}
-              <th 
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase"
-                style={{ width: '150px' }}
-              >
-                Actions
-              </th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {cards.map((card, index) => (
-              <tr key={card.id?.toString() || index.toString()} className="hover:bg-gray-50">
+            {cards.map((card) => (
+              <tr 
+                key={card.id} 
+                className="hover:bg-gray-50 cursor-pointer"
+                onClick={() => handleCardClick(card)}
+              >
                 {columns.map((column) => (
                   <td 
-                    key={column.key.toString()} 
+                    key={column.key} 
                     className={`px-6 py-4 ${
                       column.key === 'Hotel' 
                         ? 'whitespace-normal min-h-[4rem] align-top' 
                         : 'whitespace-nowrap'
                     }`}
                   >
-                    {column.key === 'status' ? (
-                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
-                        ${card.status === 'completed' ? 'bg-green-100 text-green-800' : 
-                          card.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : 
-                          'bg-gray-100 text-gray-800'}`}>
-                        {card[column.key]}
-                      </span>
-                    ) : column.key === 'remainingBalance' ? (
-                      <div className="text-sm text-gray-900">${card[column.key]?.toFixed(2)}</div>
-                    ) : column.key === 'Hotel' ? (
-                      <div className="text-sm text-gray-900 break-words leading-snug">{card[column.key]}</div>
-                    ) : column.key === 'bookingSource' ? (
-                      <div 
-                        className="text-sm text-gray-900 truncate" 
-                        title={card[column.key]?.toString() || ''}
-                      >
-                        {card[column.key]}
-                      </div>
-                    ) : (
-                      <div className="text-sm text-gray-900">{card[column.key]}</div>
-                    )}
+                    {renderCell(card, column)}
                   </td>
                 ))}
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="flex items-center gap-2">
-                    <button 
-                      title="Info" 
-                      className="text-blue-600 hover:text-blue-800"
-                      onClick={() => openModal('info', card)}
-                    >
-                      <Info className="h-5 w-5" />
-                    </button>
-                    <button 
-                      title="Charge" 
-                      className="text-green-600 hover:text-green-800"
-                      onClick={() => openModal('charge', card)}
-                    >
-                      <DollarSign className="h-5 w-5" />
-                    </button>
-                    <button 
-                      title="Notes" 
-                      className="text-gray-600 hover:text-gray-800"
-                      onClick={() => openModal('notes', card)}
-                    >
-                      <FileText className="h-5 w-5" />
-                    </button>
-                    <button 
-                      title="Edit" 
-                      className="text-yellow-600 hover:text-yellow-800"
-                      onClick={() => openModal('adjust', card)}
-                    >
-                      <Edit3 className="h-5 w-5" />
-                    </button>
-                    <button 
-                      title="Do not charge" 
-                      className="text-red-600 hover:text-red-800"
-                      onClick={() => openModal('doNotCharge', card)}
-                    >
-                      <XCircle className="h-5 w-5" />
-                    </button>
-                  </div>
-                </td>
               </tr>
             ))}
           </tbody>
@@ -172,33 +180,12 @@ export function VirtualCardTable({ cards, sortConfig, onSort }: VirtualCardTable
       </div>
 
       {selectedCard && (
-        <>
-          <InfoModal
-            isOpen={activeModal === 'info'}
-            onClose={closeModal}
-            card={selectedCard}
-          />
-          <ChargeCardModal
-            isOpen={activeModal === 'charge'}
-            onClose={closeModal}
-            card={selectedCard}
-          />
-          <NotesModal
-            isOpen={activeModal === 'notes'}
-            onClose={closeModal}
-            card={selectedCard}
-          />
-          <AdjustAmountModal
-            isOpen={activeModal === 'adjust'}
-            onClose={closeModal}
-            card={selectedCard}
-          />
-          <DoNotChargeModal
-            isOpen={activeModal === 'doNotCharge'}
-            onClose={closeModal}
-            card={selectedCard}
-          />
-        </>
+        <ChargeCardModal
+          isOpen={true}
+          onClose={handleModalClose}
+          card={selectedCard}
+          onUpdate={handleCardUpdate}
+        />
       )}
     </>
   );

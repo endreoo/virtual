@@ -1,15 +1,19 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { VirtualCardList } from './components/VirtualCardList';
 import { VirtualCardTable } from './components/table/VirtualCardTable';
 import { DashboardSummary } from './components/dashboard/DashboardSummary';
 import { DateRangeFilter } from './components/DateRangeFilter';
 import { Search } from 'lucide-react';
 import { VirtualCard } from './types';
+import { getReservations } from './utils/api';
 
-function App(): JSX.Element {
-  console.log('App component rendering...');
-  
-  const [viewMode, setViewMode] = useState<'list' | 'table'>('table');
+export function App(): JSX.Element {
+  // Authentication states
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [username, setUsername] = useState<string>('');
+  const [password, setPassword] = useState<string>('');
+  const [loginError, setLoginError] = useState<string>('');
+
+  // Application states
   const [dateRange, setDateRange] = useState<[Date | null, Date | null]>([null, null]);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('All Status');
@@ -26,32 +30,71 @@ function App(): JSX.Element {
     direction: 'desc'
   });
 
-  const handleSort = (key: keyof VirtualCard) => {
-    setSortConfig({
-      key,
-      direction: sortConfig.key === key && sortConfig.direction === 'desc' ? 'asc' : 'desc'
-    });
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (username === 'Admin' && password === 'S@ccess912') {
+      setIsAuthenticated(true);
+      setLoginError('');
+      localStorage.setItem('isAuthenticated', 'true');
+    } else {
+      setLoginError('Invalid credentials');
+    }
   };
 
-  // Memoize filtered cards to prevent unnecessary recalculations
+  // Check if user was previously authenticated
+  useEffect(() => {
+    const isAuth = localStorage.getItem('isAuthenticated');
+    if (isAuth === 'true') {
+      setIsAuthenticated(true);
+    }
+  }, []);
+
+  const refreshReservations = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await getReservations();
+      setReservations(data as VirtualCard[]);
+    } catch (err: any) {
+      console.error('Error fetching reservations:', err);
+      setError(err.message || 'Failed to fetch reservations');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      void refreshReservations();
+    }
+  }, [isAuthenticated]);
+
+  const handleSort = (key: keyof VirtualCard) => {
+    setSortConfig((prevConfig) => ({
+      key,
+      direction: prevConfig.key === key && prevConfig.direction === 'asc' ? 'desc' : 'asc'
+    }));
+  };
+
   const filteredCards = useMemo(() => {
+    if (!Array.isArray(reservations)) return [];
+    
     const oneYearAgo = new Date();
     oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
     const oneYearAgoStr = oneYearAgo.toISOString().split('T')[0];
 
-    const filtered = reservations.filter((card: VirtualCard) => {
-      // Filter out old check-in dates
-      if (card.checkInDate < oneYearAgoStr) {
-        return false;
-      }
+    let filtered = reservations.filter((card: VirtualCard) => {
+      if (!card.checkInDate || typeof card.checkInDate !== 'string') return false;
+      if (card.checkInDate < oneYearAgoStr) return false;
+      if (!card.remainingBalance || card.remainingBalance <= 0.49) return false;
 
       const matchesDate = !dateRange[0] || !dateRange[1] || 
         (card.checkInDate >= dateRange[0].toISOString().split('T')[0] && 
          card.checkInDate <= dateRange[1].toISOString().split('T')[0]);
       
       const matchesSearch = (card.guestName?.toLowerCase() || '').includes(searchQuery.toLowerCase());
-      
-      const matchesStatus = statusFilter === 'All Status' || card.status === statusFilter.toLowerCase();
+      const matchesStatus = statusFilter === 'All Status' || 
+        (statusFilter === 'Unknown' ? !card.status || card.status === 'Unknown' : card.status === statusFilter);
 
       return matchesDate && matchesSearch && matchesStatus;
     });
@@ -62,133 +105,102 @@ function App(): JSX.Element {
         const aValue = a[sortConfig.key!];
         const bValue = b[sortConfig.key!];
 
-        if (aValue === null || aValue === undefined) return 1;
-        if (bValue === null || bValue === undefined) return -1;
+        // Always put empty/unknown values at the bottom
+        if (!aValue || aValue === 'Unknown') return 1;
+        if (!bValue || bValue === 'Unknown') return -1;
+        if (!aValue && !bValue) return 0;
 
         let comparison = 0;
         if (typeof aValue === 'string' && typeof bValue === 'string') {
-          comparison = aValue.localeCompare(bValue);
-        } else if (typeof aValue === 'number' && typeof bValue === 'number') {
-          comparison = aValue - bValue;
+          // For bookingSource, strip out the "(booked X/X/XX)" part for sorting
+          if (sortConfig.key === 'bookingSource') {
+            const aSource = aValue.split(' (')[0];
+            const bSource = bValue.split(' (')[0];
+            comparison = aSource.localeCompare(bSource);
+          } else {
+            comparison = aValue.localeCompare(bValue);
+          }
         } else {
-          comparison = String(aValue).localeCompare(String(bValue));
+          comparison = aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
         }
 
-        return sortConfig.direction === 'desc' ? -comparison : comparison;
+        return sortConfig.direction === 'asc' ? comparison : -comparison;
       });
     }
 
     return filtered;
   }, [reservations, dateRange, searchQuery, statusFilter, sortConfig]);
 
-  // Memoize paginated cards
   const paginatedCards = useMemo(() => {
-    return filteredCards.slice(
-      (currentPage - 1) * pageSize,
-      currentPage * pageSize
-    );
+    const startIndex = (currentPage - 1) * pageSize;
+    return filteredCards.slice(startIndex, startIndex + pageSize);
   }, [filteredCards, currentPage, pageSize]);
-
-  useEffect(() => {
-    console.log('[Frontend] Setting up data fetch');
-    const controller = new AbortController();
-    let isSubscribed = true;
-    
-    const fetchReservations = async (): Promise<void> => {
-      if (!isSubscribed) return;
-      
-      console.log('[Frontend] Starting to fetch reservations...');
-      try {
-        setLoading(true);
-        console.log('[Frontend] Making API request to /api/reservations');
-        const response = await fetch('/api/reservations', {
-          signal: controller.signal,
-          method: 'GET',
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-          }
-        });
-        
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.details || `HTTP error! status: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        if (isSubscribed) {
-          console.log(`[Frontend] Received ${data.length} reservations`);
-          setReservations(data);
-          setError(null);
-        }
-      } catch (err: unknown) {
-        if (!isSubscribed) return;
-        
-        if (err instanceof Error) {
-          if (err.name === 'AbortError') {
-            console.log('[Frontend] Request was aborted');
-            return;
-          }
-          console.error('[Frontend] Error fetching reservations:', err.message);
-          setError(err.message);
-        } else {
-          console.error('[Frontend] Unknown error fetching reservations:', err);
-          setError('Failed to fetch reservations');
-        }
-      } finally {
-        if (isSubscribed) {
-          setLoading(false);
-          console.log('[Frontend] Fetch operation completed');
-        }
-      }
-    };
-
-    void fetchReservations();
-    
-    return () => {
-      console.log('[Frontend] Cleanup - cancelling fetch');
-      isSubscribed = false;
-      controller.abort();
-    };
-  }, []); // Empty dependency array to run only once
 
   const totalPages = Math.ceil(filteredCards.length / pageSize);
 
-  const handlePageChange = (page: number) => {
-    setCurrentPage(page);
+  const handlePageChange = (newPage: number) => {
+    setCurrentPage(newPage);
   };
 
-  const handlePageSizeChange = (size: number) => {
-    setPageSize(size);
-    setCurrentPage(1); // Reset to first page when changing page size
-  };
+  // Reset to first page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, statusFilter, dateRange, pageSize]);
 
-  const getPageNumbers = () => {
-    const delta = 2;
-    const range = [];
-    const rangeWithDots = [];
-    let l;
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-lg shadow">
+          <div>
+            <h2 className="text-center text-3xl font-extrabold text-gray-900">Sign in</h2>
+          </div>
+          <form className="mt-8 space-y-6" onSubmit={handleLogin}>
+            <div className="rounded-md shadow-sm -space-y-px">
+              <div>
+                <label htmlFor="username" className="sr-only">Username</label>
+                <input
+                  id="username"
+                  name="username"
+                  type="text"
+                  required
+                  className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
+                  placeholder="Username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                />
+              </div>
+              <div>
+                <label htmlFor="password" className="sr-only">Password</label>
+                <input
+                  id="password"
+                  name="password"
+                  type="password"
+                  required
+                  className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
+                  placeholder="Password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+              </div>
+            </div>
 
-    for (let i = 1; i <= totalPages; i++) {
-      if (i === 1 || i === totalPages || (i >= currentPage - delta && i <= currentPage + delta)) {
-        range.push(i);
-      }
-    }
+            {loginError && (
+              <div className="text-red-500 text-sm text-center">{loginError}</div>
+            )}
 
-    for (let i of range) {
-      if (l) {
-        if (i - l === 2) {
-          rangeWithDots.push(l + 1);
-        } else if (i - l !== 1) {
-          rangeWithDots.push('...');
-        }
-      }
-      rangeWithDots.push(i);
-      l = i;
-    }
-
-    return rangeWithDots;
-  };
+            <div>
+              <button
+                type="submit"
+                className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                Sign in
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -209,9 +221,20 @@ function App(): JSX.Element {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="container mx-auto px-6 py-8">
-        <h1 className="text-2xl font-bold text-gray-900 mb-8">Finance Dashboard</h1>
+        <div className="flex justify-between items-center mb-8">
+          <h1 className="text-2xl font-bold text-gray-900">Finance Dashboard</h1>
+          <button
+            onClick={() => {
+              localStorage.removeItem('isAuthenticated');
+              setIsAuthenticated(false);
+            }}
+            className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+          >
+            Logout
+          </button>
+        </div>
         
-        <DashboardSummary cards={reservations} />
+        <DashboardSummary cards={filteredCards} />
 
         <div className="mb-6">
           <h2 className="text-xl font-semibold text-gray-900 mb-4">Virtual Cards</h2>
@@ -223,7 +246,7 @@ function App(): JSX.Element {
                   type="text"
                   placeholder="Search cards..."
                   value={searchQuery}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
+                  onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
                 <Search className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
@@ -233,7 +256,7 @@ function App(): JSX.Element {
             <div className="flex items-center gap-4">
               <select
                 value={pageSize}
-                onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+                onChange={(e) => setPageSize(Number(e.target.value))}
                 className="border border-gray-300 rounded-lg px-4 py-2 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
                 <option value={10}>10 per page</option>
@@ -244,13 +267,16 @@ function App(): JSX.Element {
 
               <select
                 value={statusFilter}
-                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setStatusFilter(e.target.value)}
+                onChange={(e) => setStatusFilter(e.target.value)}
                 className="border border-gray-300 rounded-lg px-4 py-2 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
                 <option>All Status</option>
                 <option>Active</option>
-                <option>Pending</option>
-                <option>Completed</option>
+                <option>Recent</option>
+                <option>Canceled</option>
+                <option>No-show</option>
+                <option>Reconciled - modified</option>
+                <option>Unknown</option>
               </select>
             </div>
           </div>
@@ -260,86 +286,102 @@ function App(): JSX.Element {
           <div className="p-4">
             <DateRangeFilter value={dateRange} onChange={setDateRange} />
           </div>
-          <VirtualCardTable 
-            cards={paginatedCards} 
+          <VirtualCardTable
+            cards={paginatedCards}
             sortConfig={sortConfig}
             onSort={handleSort}
+            onUpdate={(updatedCard) => {
+              setReservations(prevReservations => 
+                prevReservations.map(card => 
+                  card.id === updatedCard.id ? updatedCard : card
+                )
+              );
+            }}
           />
-          {filteredCards.length === 0 && !loading && (
-            <div className="p-8 text-center text-gray-500">
-              No reservations found
-            </div>
-          )}
-          
-          {/* Pagination Controls */}
-          {filteredCards.length > 0 && (
-            <div className="flex items-center justify-between border-t border-gray-200 bg-white px-4 py-3 sm:px-6">
-              <div className="flex flex-1 justify-between sm:hidden">
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between px-6 py-4 border-t">
+              <div className="text-sm text-gray-700">
+                Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, filteredCards.length)} of {filteredCards.length} entries
+              </div>
+              <div className="flex gap-2">
                 <button
                   onClick={() => handlePageChange(currentPage - 1)}
                   disabled={currentPage === 1}
-                  className="relative inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  className={`px-3 py-1 rounded ${
+                    currentPage === 1
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      : 'bg-white text-gray-700 hover:bg-gray-50 border'
+                  }`}
                 >
                   Previous
                 </button>
+                {(() => {
+                  const pages = [];
+                  const maxButtons = 5;
+                  const halfMaxButtons = Math.floor(maxButtons / 2);
+
+                  if (totalPages <= maxButtons) {
+                    // Show all pages if total pages is less than max buttons
+                    for (let i = 1; i <= totalPages; i++) {
+                      pages.push(i);
+                    }
+                  } else {
+                    // Always show first page
+                    pages.push(1);
+
+                    // Calculate start and end of middle section
+                    let startPage = Math.max(2, currentPage - halfMaxButtons);
+                    let endPage = Math.min(totalPages - 1, startPage + maxButtons - 3);
+                    startPage = Math.max(2, endPage - maxButtons + 3);
+
+                    // Add ellipsis after first page if needed
+                    if (startPage > 2) {
+                      pages.push('...');
+                    }
+
+                    // Add middle pages
+                    for (let i = startPage; i <= endPage; i++) {
+                      pages.push(i);
+                    }
+
+                    // Add ellipsis before last page if needed
+                    if (endPage < totalPages - 1) {
+                      pages.push('...');
+                    }
+
+                    // Always show last page
+                    pages.push(totalPages);
+                  }
+
+                  return pages.map((page, index) => 
+                    page === '...' ? (
+                      <span key={`ellipsis-${index}`} className="px-3 py-1">...</span>
+                    ) : (
+                      <button
+                        key={page}
+                        onClick={() => handlePageChange(page as number)}
+                        className={`px-3 py-1 rounded ${
+                          currentPage === page
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-white text-gray-700 hover:bg-gray-50 border'
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    )
+                  );
+                })()}
                 <button
                   onClick={() => handlePageChange(currentPage + 1)}
                   disabled={currentPage === totalPages}
-                  className="relative ml-3 inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  className={`px-3 py-1 rounded ${
+                    currentPage === totalPages
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      : 'bg-white text-gray-700 hover:bg-gray-50 border'
+                  }`}
                 >
                   Next
                 </button>
-              </div>
-              <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-sm text-gray-700">
-                    Showing <span className="font-medium">{(currentPage - 1) * pageSize + 1}</span> to{' '}
-                    <span className="font-medium">
-                      {Math.min(currentPage * pageSize, filteredCards.length)}
-                    </span>{' '}
-                    of <span className="font-medium">{filteredCards.length}</span> results
-                  </p>
-                </div>
-                <div>
-                  <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
-                    <button
-                      onClick={() => handlePageChange(currentPage - 1)}
-                      disabled={currentPage === 1}
-                      className="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50"
-                    >
-                      <span className="sr-only">Previous</span>
-                      <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                        <path fillRule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clipRule="evenodd" />
-                      </svg>
-                    </button>
-                    {getPageNumbers().map((pageNum, index) => (
-                      <button
-                        key={index}
-                        onClick={() => typeof pageNum === 'number' ? handlePageChange(pageNum) : undefined}
-                        disabled={pageNum === '...'}
-                        className={`relative inline-flex items-center px-4 py-2 text-sm font-semibold ${
-                          pageNum === currentPage
-                            ? 'z-10 bg-blue-600 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600'
-                            : pageNum === '...'
-                            ? 'text-gray-700'
-                            : 'text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0'
-                        }`}
-                      >
-                        {pageNum}
-                      </button>
-                    ))}
-                    <button
-                      onClick={() => handlePageChange(currentPage + 1)}
-                      disabled={currentPage === totalPages}
-                      className="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50"
-                    >
-                      <span className="sr-only">Next</span>
-                      <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                        <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" />
-                      </svg>
-                    </button>
-                  </nav>
-                </div>
               </div>
             </div>
           )}
@@ -348,5 +390,3 @@ function App(): JSX.Element {
     </div>
   );
 }
-
-export default App;

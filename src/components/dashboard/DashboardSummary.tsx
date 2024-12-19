@@ -6,12 +6,24 @@ interface DashboardSummaryProps {
   cards: VirtualCard[];
 }
 
-export function DashboardSummary({ cards }: DashboardSummaryProps) {
-  const cardsToCharge = cards.filter(card => card.status === 'pending').length;
-  const totalAmountToCharge = cards
-    .filter(card => card.status === 'pending')
-    .reduce((sum, card) => sum + card.remainingBalance, 0);
-  const expiredCards = 3; // This would come from actual data in a real app
+export function DashboardSummary({ cards = [] }: DashboardSummaryProps) {
+  const cardsToCharge = Array.isArray(cards) 
+    ? cards.filter(card => (card.remainingBalance || 0) > 0.49).length 
+    : 0;
+  const totalAmountToCharge = Array.isArray(cards) 
+    ? cards.filter(card => (card.remainingBalance || 0) > 0.49)
+          .reduce((sum, card) => sum + (card.remainingBalance || 0), 0)
+    : 0;
+    
+  const sixMonthsAgo = new Date();
+  sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+  
+  const expiredCards = Array.isArray(cards)
+    ? cards.filter(card => {
+        const checkInDate = card.checkInDate ? new Date(card.checkInDate) : null;
+        return checkInDate && checkInDate < sixMonthsAgo;
+      }).length
+    : 0;
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -46,7 +58,7 @@ export function DashboardSummary({ cards }: DashboardSummaryProps) {
           <div>
             <h3 className="text-gray-600 text-sm font-medium mb-1">Expired Cards</h3>
             <p className="text-4xl font-semibold mb-1">{expiredCards}</p>
-            <p className="text-gray-500 text-sm">Older than 6 months</p>
+            <p className="text-gray-500 text-sm">Check-in older than 6 months</p>
           </div>
           <div className="bg-red-500 p-3 rounded-full">
             <Clock className="h-6 w-6 text-white" />

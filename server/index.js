@@ -1,27 +1,11 @@
-import express from 'express';
-import cors from 'cors';
-import mysql from 'mysql2/promise';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+const express = require('express');
+const cors = require('cors');
+const mysql = require('mysql2/promise');
 
 const app = express();
+const port = 5000;
 
-// Configure CORS
-app.use(cors({
-  origin: ['http://localhost:5169', 'http://localhost:5000'],
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
-}));
-
-app.use(express.json());
-
-// Serve static files from the dist directory
-app.use(express.static(join(__dirname, '../dist')));
-
+// Create MySQL connection pool
 const pool = mysql.createPool({
   host: 'localhost',
   user: 'scraper',
@@ -32,112 +16,155 @@ const pool = mysql.createPool({
   queueLimit: 0
 });
 
-// Validate database connection
-const validateConnection = async () => {
-  try {
-    const connection = await pool.getConnection();
-    console.log('Database connection established successfully');
-    connection.release();
-    return true;
-  } catch (error) {
-    console.error('Database connection failed:', error.message);
-    return false;
-  }
-};
+// Enable CORS for all routes
+app.use(cors({
+  origin: true,
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
-// API Routes
-app.get('/api/test', (req, res) => {
-  res.json({ message: 'API is working' });
+app.use(express.json());
+
+// Add request logging middleware
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  next();
 });
+
+// Test database connection
+pool.getConnection()
+  .then(connection => {
+    console.log('[Database] Connected successfully');
+    connection.release();
+  })
+  .catch(err => {
+    console.error('[Database] Connection failed:', err.message);
+  });
 
 app.get('/api/reservations', async (req, res) => {
+  console.log('[API] Fetching reservations from database');
   try {
-    console.log('Attempting to fetch reservations...');
-    
-    const query = `
+    const [rows] = await pool.execute(`
       SELECT 
-        er.*,
-        h.name as Hotel,
-        h.id as hotel_table_id,
-        er.hotel_id as reservation_hotel_id,
-        er.fullSidePanelText
+        er.id,
+        er.guestName,
+        er.guestFullName,
+        er.checkInDate,
+        er.checkOutDate,
+        CAST(er.bookingAmount AS DECIMAL(10,2)) as bookingAmount,
+        CAST(er.remainingBalance AS DECIMAL(10,2)) as remainingBalance,
+        COALESCE(er.status, 'Unknown') as status,
+        er.cardNumber,
+        er.expirationDate,
+        er.cvv,
+        er.card_status,
+        er.fullSidePanelText,
+        er.notes,
+        CONCAT(
+          CASE 
+            WHEN er.bookingSource IS NOT NULL THEN er.bookingSource
+            ELSE 'Unknown'
+          END,
+          CASE 
+            WHEN er.bookedOn IS NOT NULL THEN CONCAT(' (booked ', DATE_FORMAT(er.bookedOn, '%c/%e/%y'), ')')
+            ELSE ''
+          END
+        ) as bookingSource,
+        er.bookingDate,
+        er.created_at,
+        er.updated_at,
+        h.name as Hotel
       FROM expedia_reservations er
-      LEFT JOIN hotels h ON er.hotel_id = h.id
-      WHERE er.remainingBalance >= 0.5
-      AND er.checkInDate >= DATE_SUB(CURDATE(), INTERVAL 365 DAY)
-      ORDER BY er.checkInDate DESC
-    `;
-    
-    console.log('Executing query:', query);
-    
-    const [rows] = await pool.query(query);
-    
-    console.log(`Successfully retrieved ${rows.length} reservations`);
-    if (rows.length > 0) {
-      console.log('Sample row:', JSON.stringify(rows[0], null, 2));
-    }
-    
+      LEFT JOIN hotels h ON er.hotel_id = h.id 
+      ORDER BY er.created_at DESC
+    `);
+
+    // Format the response data
     const formattedRows = rows.map(row => ({
       ...row,
-      Hotel: row.Hotel || 'Unknown Hotel',
-      checkInDate: row.checkInDate ? new Date(row.checkInDate).toISOString().split('T')[0] : null,
-      checkOutDate: row.checkOutDate ? new Date(row.checkOutDate).toISOString().split('T')[0] : null,
-      remainingBalance: parseFloat(row.remainingBalance || 0),
-      status: row.reservationStatus || row.status || 'pending',
-      bookingSource: row.bookingSource || 'Expedia',
-      currency: row.currency || 'USD'
+      bookingAmount: row.bookingAmount ? Number(row.bookingAmount) : null,
+      remainingBalance: row.remainingBalance ? Number(row.remainingBalance) : null,
+      checkInDate: row.checkInDate ? row.checkInDate.toISOString().split('T')[0] : null,
+      checkOutDate: row.checkOutDate ? row.checkOutDate.toISOString().split('T')[0] : null,
+      bookingDate: row.bookingDate ? row.bookingDate.toISOString().split('T')[0] : null,
+      created_at: row.created_at ? row.created_at.toISOString() : null,
+      updated_at: row.updated_at ? row.updated_at.toISOString() : null
     }));
 
-    console.log('First formatted row:', JSON.stringify(formattedRows[0], null, 2));
+    // Log sample data for debugging
+    if (formattedRows.length > 0) {
+      console.log('[API] Sample reservation data:', {
+        id: formattedRows[0].id,
+        status: formattedRows[0].status,
+        bookingSource: formattedRows[0].bookingSource,
+        Hotel: formattedRows[0].Hotel,
+        fullSidePanelText: formattedRows[0].fullSidePanelText ? 'Present' : 'Missing'
+      });
+      
+      // Log the first few characters of fullSidePanelText if present
+      if (formattedRows[0].fullSidePanelText) {
+        console.log('[API] First 100 chars of fullSidePanelText:', 
+          formattedRows[0].fullSidePanelText.substring(0, 100));
+      }
+    }
+
+    console.log(`[API] Found ${formattedRows.length} reservations`);
     res.json(formattedRows);
   } catch (error) {
-    console.error('Detailed error in /api/reservations:', {
-      message: error.message,
-      code: error.code,
-      sqlState: error.sqlState,
-      sqlMessage: error.sqlMessage,
-      sql: error.sql,
-      stack: error.stack
-    });
+    console.error('[API] Database error:', error.message);
     res.status(500).json({ 
       error: 'Failed to fetch reservations',
-      details: error.message,
-      sqlMessage: error.sqlMessage 
+      details: error.message 
     });
   }
 });
 
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error('Global error handler:', err.stack);
-  res.status(500).json({
-    error: 'Internal server error',
-    message: err.message,
-    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
-  });
-});
+// Add update-notes endpoint
+app.post('/api/cards/update-notes', async (req, res) => {
+  console.log('[API] Updating card notes, request body:', req.body);
+  try {
+    const { cardId, notes } = req.body;
+    
+    if (!cardId) {
+      console.log('[API] Error: Card ID is missing');
+      return res.status(400).json({ 
+        status: 'error',
+        message: 'Card ID is required' 
+      });
+    }
 
-// Serve index.html for all non-API routes (must be after API routes)
-app.get('*', (req, res) => {
-  res.sendFile(join(__dirname, '../dist/index.html'));
-});
+    console.log(`[API] Executing update query for card ${cardId} with notes:`, notes);
+    const [result] = await pool.execute(
+      'UPDATE expedia_reservations SET notes = ? WHERE id = ?',
+      [notes, cardId]
+    );
+    console.log('[API] Update result:', result);
 
-const PORT = process.env.PORT || 5000;
+    // Check if any rows were affected
+    if (result.affectedRows === 0) {
+      console.log('[API] No rows were updated');
+      return res.status(404).json({
+        status: 'error',
+        message: 'Card not found or no changes made'
+      });
+    }
 
-// Start server only if database connection is successful
-const startServer = async () => {
-  const isConnected = await validateConnection();
-  if (isConnected) {
-    app.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
-      console.log('API endpoints:');
-      console.log(`- GET http://localhost:${PORT}/api/reservations`);
-      console.log(`- GET http://localhost:${PORT}/api/test`);
+    res.json({ 
+      status: 'success',
+      message: 'Notes updated successfully',
+      notes: notes
     });
-  } else {
-    console.error('Server startup failed due to database connection issues');
-    process.exit(1);
+  } catch (err) {
+    console.error('[API] Error updating notes:', err);
+    res.status(500).json({ 
+      status: 'error',
+      message: err.message || 'Failed to update notes'
+    });
   }
-};
+});
 
-startServer(); 
+app.listen(port, '0.0.0.0', () => {
+  console.log(`[Server] Started at http://0.0.0.0:${port}`);
+  console.log('[Server] Press Ctrl+C to stop');
+}); 
