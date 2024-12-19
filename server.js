@@ -178,6 +178,45 @@ app.get('/api/reservations', async (req, res) => {
   }
 });
 
+// Update notes endpoint
+app.post('/api/cards/update-notes', async (req, res) => {
+  try {
+    const { cardId, notes } = req.body;
+    
+    if (!cardId) {
+      return res.status(400).json({ 
+        status: 'error',
+        message: 'Card ID is required' 
+      });
+    }
+
+    const [result] = await pool.execute(
+      'UPDATE expedia_reservations SET notes = ? WHERE id = ?',
+      [notes, cardId]
+    );
+
+    // Check if any rows were affected
+    if (result.affectedRows === 0) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Card not found or no changes made'
+      });
+    }
+
+    res.json({ 
+      status: 'success',
+      message: 'Notes updated successfully',
+      notes: notes
+    });
+  } catch (err) {
+    console.error('[API] Error updating notes:', err);
+    res.status(500).json({ 
+      status: 'error',
+      message: err.message || 'Failed to update notes'
+    });
+  }
+});
+
 // Flutterwave payment endpoint
 app.post('/api/process-payment/flutterwave', async (req, res) => {
   try {
