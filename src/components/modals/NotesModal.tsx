@@ -49,7 +49,7 @@ export function NotesModal({ isOpen, onClose, card }: NotesModalProps) {
             </div>
             <div>
               <p className="text-sm text-gray-500">Hotel</p>
-              <p className="font-medium">{card.hotelName}</p>
+              <p className="font-medium">{card.Hotel}</p>
             </div>
             <div>
               <p className="text-sm text-gray-500">Balance</p>

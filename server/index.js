@@ -54,53 +54,41 @@ app.get('/api/reservations', async (req, res) => {
   try {
     console.log('Attempting to fetch reservations...');
     
-    // First, let's check if the table exists
-    const [tables] = await pool.query(`
-      SELECT TABLE_NAME 
-      FROM information_schema.TABLES 
-      WHERE TABLE_SCHEMA = 'properties' 
-      AND TABLE_NAME = 'expedia_reservations'
-    `);
+    const query = `
+      SELECT 
+        er.*,
+        h.name as Hotel,
+        h.id as hotel_table_id,
+        er.hotel_id as reservation_hotel_id,
+        er.fullSidePanelText
+      FROM expedia_reservations er
+      LEFT JOIN hotels h ON er.hotel_id = h.id
+      WHERE er.remainingBalance >= 0.5
+      AND er.checkInDate >= DATE_SUB(CURDATE(), INTERVAL 365 DAY)
+      ORDER BY er.checkInDate DESC
+    `;
     
-    if (tables.length === 0) {
-      throw new Error('Expedia reservations table not found');
-    }
-
-    // Get table structure
-    const [columns] = await pool.query(`
-      SELECT COLUMN_NAME 
-      FROM information_schema.COLUMNS 
-      WHERE TABLE_SCHEMA = 'properties' 
-      AND TABLE_NAME = 'expedia_reservations'
-    `);
+    console.log('Executing query:', query);
     
-    console.log('Table columns:', columns.map(col => col.COLUMN_NAME));
-
-    const [rows] = await pool.query(`
-      SELECT * FROM expedia_reservations 
-      WHERE remainingBalance >= 0.5
-      AND checkInDate >= DATE_SUB(CURDATE(), INTERVAL 365 DAY)
-      ORDER BY checkInDate DESC
-    `);
+    const [rows] = await pool.query(query);
     
     console.log(`Successfully retrieved ${rows.length} reservations`);
+    if (rows.length > 0) {
+      console.log('Sample row:', JSON.stringify(rows[0], null, 2));
+    }
     
     const formattedRows = rows.map(row => ({
-      id: row.id,
-      guestName: row.guestName || row.guestFullName || '',
-      confirmationCode: row.confirmationCode || '',
+      ...row,
+      Hotel: row.Hotel || 'Unknown Hotel',
       checkInDate: row.checkInDate ? new Date(row.checkInDate).toISOString().split('T')[0] : null,
       checkOutDate: row.checkOutDate ? new Date(row.checkOutDate).toISOString().split('T')[0] : null,
-      bookingAmount: parseFloat(row.bookingAmount || 0),
       remainingBalance: parseFloat(row.remainingBalance || 0),
       status: row.reservationStatus || row.status || 'pending',
       bookingSource: row.bookingSource || 'Expedia',
       currency: row.currency || 'USD'
     }));
 
-    console.log('First row sample:', rows[0]);
-    console.log('Formatted first row:', formattedRows[0]);
-
+    console.log('First formatted row:', JSON.stringify(formattedRows[0], null, 2));
     res.json(formattedRows);
   } catch (error) {
     console.error('Detailed error in /api/reservations:', {

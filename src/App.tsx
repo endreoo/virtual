@@ -49,8 +49,7 @@ function App(): JSX.Element {
         (card.checkInDate >= dateRange[0].toISOString().split('T')[0] && 
          card.checkInDate <= dateRange[1].toISOString().split('T')[0]);
       
-      const matchesSearch = (card.guestName?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
-        (card.confirmationCode?.toLowerCase() || '').includes(searchQuery.toLowerCase());
+      const matchesSearch = (card.guestName?.toLowerCase() || '').includes(searchQuery.toLowerCase());
       
       const matchesStatus = statusFilter === 'All Status' || card.status === statusFilter.toLowerCase();
 
@@ -91,11 +90,17 @@ function App(): JSX.Element {
   }, [filteredCards, currentPage, pageSize]);
 
   useEffect(() => {
+    console.log('[Frontend] Setting up data fetch');
     const controller = new AbortController();
+    let isSubscribed = true;
     
     const fetchReservations = async (): Promise<void> => {
+      if (!isSubscribed) return;
+      
+      console.log('[Frontend] Starting to fetch reservations...');
       try {
         setLoading(true);
+        console.log('[Frontend] Making API request to /api/reservations');
         const response = await fetch('/api/reservations', {
           signal: controller.signal,
           method: 'GET',
@@ -106,32 +111,46 @@ function App(): JSX.Element {
         });
         
         if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.details || `HTTP error! status: ${response.status}`);
         }
         
         const data = await response.json();
-        setReservations(data);
-        setError(null);
+        if (isSubscribed) {
+          console.log(`[Frontend] Received ${data.length} reservations`);
+          setReservations(data);
+          setError(null);
+        }
       } catch (err: unknown) {
+        if (!isSubscribed) return;
+        
         if (err instanceof Error) {
-          if (err.name === 'AbortError') return;
-          console.error('Error fetching reservations:', err.message);
+          if (err.name === 'AbortError') {
+            console.log('[Frontend] Request was aborted');
+            return;
+          }
+          console.error('[Frontend] Error fetching reservations:', err.message);
           setError(err.message);
         } else {
-          console.error('Unknown error fetching reservations:', err);
+          console.error('[Frontend] Unknown error fetching reservations:', err);
           setError('Failed to fetch reservations');
         }
       } finally {
-        setLoading(false);
+        if (isSubscribed) {
+          setLoading(false);
+          console.log('[Frontend] Fetch operation completed');
+        }
       }
     };
 
     void fetchReservations();
     
     return () => {
+      console.log('[Frontend] Cleanup - cancelling fetch');
+      isSubscribed = false;
       controller.abort();
     };
-  }, []);
+  }, []); // Empty dependency array to run only once
 
   const totalPages = Math.ceil(filteredCards.length / pageSize);
 

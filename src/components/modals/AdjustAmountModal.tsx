@@ -70,7 +70,7 @@ export function AdjustAmountModal({ isOpen, onClose, card }: AdjustAmountModalPr
             </div>
             <div>
               <p className="text-sm text-gray-500">Hotel</p>
-              <p className="font-medium">{card.hotelName}</p>
+              <p className="font-medium">{card.Hotel}</p>
             </div>
             <div>
               <p className="text-sm text-gray-500">Current Balance</p>

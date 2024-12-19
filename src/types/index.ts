@@ -2,7 +2,7 @@ export interface VirtualCard {
   id: number;
   guestName: string;
   guestFullName: string;
-  confirmationCode: string;
+  Hotel: string;
   checkInDate: string;
   checkOutDate: string;
   arrivalTime: string;
@@ -28,6 +28,7 @@ export interface VirtualCard {
   chargeBefore: string;
   created_at: string;
   updated_at: string;
+  fullSidePanelText: string;
 }
 
 export interface Payment {
