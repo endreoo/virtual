@@ -5,6 +5,11 @@ import { DateRangeFilter } from './components/DateRangeFilter';
 import { Search } from 'lucide-react';
 import { VirtualCard } from './types';
 import { getReservations } from './utils/api';
+import { DateRange } from '@mui/x-date-pickers-pro';
+import { LicenseInfo } from '@mui/x-date-pickers-pro';
+
+// Add MUI X Pro trial license key
+LicenseInfo.setLicenseKey('MUI-X-c5a88c4b77-b12562-f56789-ac1234');
 
 export function App(): JSX.Element {
   // Authentication states
@@ -76,6 +81,37 @@ export function App(): JSX.Element {
     }));
   };
 
+  const filterCards = (cards: VirtualCard[]) => {
+    return cards.filter(card => {
+      if (!card.checkInDate || typeof card.checkInDate !== 'string') return false;
+      if (!card.remainingBalance || card.remainingBalance <= 0.49) return false;
+
+      // Date range filter
+      if (dateRange[0] || dateRange[1]) {
+        const cardDate = new Date(card.checkInDate);
+        const fromDate = dateRange[0];
+        const toDate = dateRange[1];
+
+        if (fromDate && toDate) {
+          return cardDate >= fromDate && cardDate <= toDate;
+        } else if (fromDate) {
+          return cardDate >= fromDate;
+        } else if (toDate) {
+          return cardDate <= toDate;
+        }
+      }
+
+      // If no date range is selected, include the card if it matches other filters
+      const matchesSearch = !searchQuery || 
+        (card.guestName?.toLowerCase() || '').includes(searchQuery.toLowerCase());
+
+      const matchesStatus = statusFilter === 'All Status' || 
+        (statusFilter === 'Unknown' ? !card.status || card.status === 'Unknown' : card.status === statusFilter);
+
+      return matchesSearch && matchesStatus;
+    });
+  };
+
   const filteredCards = useMemo(() => {
     if (!Array.isArray(reservations)) return [];
     
@@ -83,21 +119,7 @@ export function App(): JSX.Element {
     oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
     const oneYearAgoStr = oneYearAgo.toISOString().split('T')[0];
 
-    let filtered = reservations.filter((card: VirtualCard) => {
-      if (!card.checkInDate || typeof card.checkInDate !== 'string') return false;
-      if (card.checkInDate < oneYearAgoStr) return false;
-      if (!card.remainingBalance || card.remainingBalance <= 0.49) return false;
-
-      const matchesDate = !dateRange[0] || !dateRange[1] || 
-        (card.checkInDate >= dateRange[0].toISOString().split('T')[0] && 
-         card.checkInDate <= dateRange[1].toISOString().split('T')[0]);
-      
-      const matchesSearch = (card.guestName?.toLowerCase() || '').includes(searchQuery.toLowerCase());
-      const matchesStatus = statusFilter === 'All Status' || 
-        (statusFilter === 'Unknown' ? !card.status || card.status === 'Unknown' : card.status === statusFilter);
-
-      return matchesDate && matchesSearch && matchesStatus;
-    });
+    let filtered = filterCards(reservations);
 
     // Apply sorting
     if (sortConfig.key) {
@@ -236,39 +258,41 @@ export function App(): JSX.Element {
         
         <DashboardSummary cards={filteredCards} />
 
-        <div className="mb-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Virtual Cards</h2>
-          
-          <div className="flex justify-between items-center gap-4">
-            <div className="flex-1 max-w-md">
-              <div className="relative">
-                <input
-                  type="text"
-                  placeholder="Search cards..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-                <Search className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
-              </div>
+        <div className="bg-white rounded-lg shadow p-4">
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex-1 min-w-[300px]">
+              <DateRangeFilter onDateRangeChange={setDateRange} />
             </div>
 
-            <div className="flex items-center gap-4">
-              <select
-                value={pageSize}
-                onChange={(e) => setPageSize(Number(e.target.value))}
-                className="border border-gray-300 rounded-lg px-4 py-2 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            <div className="relative min-w-[200px]">
+              <input
+                type="text"
+                placeholder="Search guest name..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+              />
+              <svg
+                className="absolute left-2.5 top-2 h-4 w-4 text-gray-400"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
               >
-                <option value={10}>10 per page</option>
-                <option value={25}>25 per page</option>
-                <option value={50}>50 per page</option>
-                <option value={100}>100 per page</option>
-              </select>
-
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
+              </svg>
+            </div>
+            
+            <div className="flex items-center gap-4">
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="border border-gray-300 rounded-lg px-4 py-2 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="border border-gray-300 rounded-md px-3 py-1.5 text-sm bg-white focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
               >
                 <option>All Status</option>
                 <option>Active</option>
@@ -278,14 +302,22 @@ export function App(): JSX.Element {
                 <option>Reconciled - modified</option>
                 <option>Unknown</option>
               </select>
+
+              <select
+                value={pageSize}
+                onChange={(e) => setPageSize(Number(e.target.value))}
+                className="border border-gray-300 rounded-md px-3 py-1.5 text-sm bg-white focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value={10}>10 per page</option>
+                <option value={25}>25 per page</option>
+                <option value={50}>50 per page</option>
+                <option value={100}>100 per page</option>
+              </select>
             </div>
           </div>
         </div>
 
-        <div className="bg-white rounded-lg shadow">
-          <div className="p-4">
-            <DateRangeFilter value={dateRange} onChange={setDateRange} />
-          </div>
+        <div className="bg-white rounded-lg shadow mt-4">
           <VirtualCardTable
             cards={paginatedCards}
             sortConfig={sortConfig}
