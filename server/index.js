@@ -45,7 +45,10 @@ pool.getConnection()
 app.get('/api/reservations', async (req, res) => {
   console.log('[API] Fetching reservations from database');
   try {
-    const [rows] = await pool.execute(`
+    const { showChargeable } = req.query;
+    console.log('[API] Show chargeable only:', showChargeable);
+
+    const baseQuery = `
       SELECT 
         er.id,
         er.guestName,
@@ -77,8 +80,11 @@ app.get('/api/reservations', async (req, res) => {
         h.name as Hotel
       FROM expedia_reservations er
       LEFT JOIN hotels h ON er.hotel_id = h.id 
+      ${showChargeable === 'true' ? 'WHERE er.remainingBalance >= 0.49' : ''}
       ORDER BY er.created_at DESC
-    `);
+    `;
+
+    const [rows] = await pool.execute(baseQuery);
 
     // Format the response data
     const formattedRows = rows.map(row => ({

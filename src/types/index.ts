@@ -6,7 +6,7 @@ export interface VirtualCard {
   expirationDate?: string;
   cvv?: string;
   currency: string;
-  guestName: string;
+  guestName?: string;
   Hotel: string;
   checkInDate: string;
   checkOutDate: string;
@@ -17,44 +17,37 @@ export interface VirtualCard {
   card_status?: string;
   fullSidePanelText?: string;
   lastScrapedAt?: string;
-  bookingSource: string;
+  bookingSource?: string;
   hotelId?: number;
   expedia_reservation_id?: number;
 }
 
 export interface Transaction {
-  id: number | string;
-  cardId: number;
-  amount: number;
-  type: 'payment' | 'refund' | 'adjustment' | 'external';
-  source: 'flutterwave' | 'stripe' | 'manual' | 'system' | 'external';
-  description: string;
+  id: number;
+  amountCharged: number;
+  dateOfPayment: string;
+  paymentChannel: string;
   referenceNumber?: string;
-  createdAt: string;
-  balanceAfter: number;
-  status: 'success' | 'pending' | 'failed';
-  metadata?: Record<string, any>;
+  notes?: string;
 }
 
-export type PaymentMethod = 'flutterwave' | 'stripe' | 'im_bank' | 'manual' | 'link' | 'doNotCharge' | null;
+export type PaymentMethod = 'flutterwave' | 'stripe' | 'manual' | 'link' | 'doNotCharge' | 'im_bank' | null;
 
 export type ActiveTab = 'info' | 'payment' | 'notes' | 'transactions';
 
-export interface PaymentMethodOption {
-  id: PaymentMethod;
+export type PaymentMethodOption = {
+  id: string;
   name: string;
-  icon: LucideIcon;
+  icon: any;
   description: string;
   color: string;
   bgHover: string;
   bgSelected: string;
-}
-
-export type SortDirection = 'asc' | 'desc';
+};
 
 export type SortConfig = {
   key: keyof VirtualCard | null;
-  direction: SortDirection;
+  direction: 'asc' | 'desc';
 };
 
 export interface Payment {

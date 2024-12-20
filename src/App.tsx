@@ -83,82 +83,75 @@ export function App(): JSX.Element {
 
   const filterCards = (cards: VirtualCard[]) => {
     return cards.filter(card => {
-      if (!card.checkInDate || typeof card.checkInDate !== 'string') return false;
-      if (!card.remainingBalance || card.remainingBalance <= 0.49) return false;
+      if (!card.checkInDate) return false;
+
+      // Search filter
+      if (searchQuery) {
+        const searchLower = searchQuery.toLowerCase();
+        const matchesSearch = 
+          card.guestName?.toLowerCase().includes(searchLower) ||
+          card.Hotel?.toLowerCase().includes(searchLower) ||
+          card.id?.toString().includes(searchLower);
+        
+        if (!matchesSearch) return false;
+      }
 
       // Date range filter
       if (dateRange[0] || dateRange[1]) {
-        const cardDate = new Date(card.checkInDate);
-        const fromDate = dateRange[0];
-        const toDate = dateRange[1];
-
-        if (fromDate && toDate) {
-          return cardDate >= fromDate && cardDate <= toDate;
-        } else if (fromDate) {
-          return cardDate >= fromDate;
-        } else if (toDate) {
-          return cardDate <= toDate;
+        const checkInDate = new Date(card.checkInDate);
+        // Reset time part to compare dates only
+        checkInDate.setHours(0, 0, 0, 0);
+        
+        if (dateRange[0]) {
+          const startDate = new Date(dateRange[0]);
+          startDate.setHours(0, 0, 0, 0);
+          if (checkInDate < startDate) return false;
+        }
+        
+        if (dateRange[1]) {
+          const endDate = new Date(dateRange[1]);
+          endDate.setHours(0, 0, 0, 0);
+          if (checkInDate > endDate) return false;
         }
       }
 
-      // If no date range is selected, include the card if it matches other filters
-      const matchesSearch = !searchQuery || 
-        (card.guestName?.toLowerCase() || '').includes(searchQuery.toLowerCase());
-
-      const matchesStatus = statusFilter === 'All Status' || 
-        (statusFilter === 'Unknown' ? !card.status || card.status === 'Unknown' : card.status === statusFilter);
-
-      return matchesSearch && matchesStatus;
+      return true;
     });
   };
 
-  const filteredCards = useMemo(() => {
-    if (!Array.isArray(reservations)) return [];
-    
-    const oneYearAgo = new Date();
-    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-    const oneYearAgoStr = oneYearAgo.toISOString().split('T')[0];
+  const sortedCards = useMemo(() => {
+    const filteredCards = filterCards(reservations);
+    if (!sortConfig.key) return filteredCards;
 
-    let filtered = filterCards(reservations);
+    return [...filteredCards].sort((a, b) => {
+      if (a[sortConfig.key] === null) return 1;
+      if (b[sortConfig.key] === null) return -1;
+      
+      const aValue = a[sortConfig.key];
+      const bValue = b[sortConfig.key];
+      
+      if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+      if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [reservations, sortConfig, dateRange, searchQuery]);
 
-    // Apply sorting
-    if (sortConfig.key) {
-      filtered.sort((a, b) => {
-        const aValue = a[sortConfig.key!];
-        const bValue = b[sortConfig.key!];
-
-        // Always put empty/unknown values at the bottom
-        if (!aValue || aValue === 'Unknown') return 1;
-        if (!bValue || bValue === 'Unknown') return -1;
-        if (!aValue && !bValue) return 0;
-
-        let comparison = 0;
-        if (typeof aValue === 'string' && typeof bValue === 'string') {
-          // For bookingSource, strip out the "(booked X/X/XX)" part for sorting
-          if (sortConfig.key === 'bookingSource') {
-            const aSource = aValue.split(' (')[0];
-            const bSource = bValue.split(' (')[0];
-            comparison = aSource.localeCompare(bSource);
-          } else {
-            comparison = aValue.localeCompare(bValue);
-          }
-        } else {
-          comparison = aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
-        }
-
-        return sortConfig.direction === 'asc' ? comparison : -comparison;
-      });
+  const handleCardUpdate = (updatedCard?: VirtualCard) => {
+    if (updatedCard) {
+      setReservations(prev => 
+        prev.map(card => card.id === updatedCard.id ? updatedCard : card)
+      );
+    } else {
+      refreshReservations();
     }
-
-    return filtered;
-  }, [reservations, dateRange, searchQuery, statusFilter, sortConfig]);
+  };
 
   const paginatedCards = useMemo(() => {
     const startIndex = (currentPage - 1) * pageSize;
-    return filteredCards.slice(startIndex, startIndex + pageSize);
-  }, [filteredCards, currentPage, pageSize]);
+    return sortedCards.slice(startIndex, startIndex + pageSize);
+  }, [sortedCards, currentPage, pageSize]);
 
-  const totalPages = Math.ceil(filteredCards.length / pageSize);
+  const totalPages = Math.ceil(sortedCards.length / pageSize);
 
   const handlePageChange = (newPage: number) => {
     setCurrentPage(newPage);
@@ -171,10 +164,12 @@ export function App(): JSX.Element {
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-gray-100">
         <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-lg shadow">
           <div>
-            <h2 className="text-center text-3xl font-extrabold text-gray-900">Sign in</h2>
+            <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
+              Sign in to your account
+            </h2>
           </div>
           <form className="mt-8 space-y-6" onSubmit={handleLogin}>
             <div className="rounded-md shadow-sm -space-y-px">
@@ -241,189 +236,40 @@ export function App(): JSX.Element {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="container mx-auto px-6 py-8">
-        <div className="flex justify-between items-center mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">Finance Dashboard</h1>
-          <button
-            onClick={() => {
-              localStorage.removeItem('isAuthenticated');
-              setIsAuthenticated(false);
-            }}
-            className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
-          >
-            Logout
-          </button>
+    <div className="min-h-screen bg-gray-100">
+      <div className="container mx-auto px-4 py-8">
+        <div className="mb-8">
+          <DashboardSummary cards={sortedCards} />
         </div>
-        
-        <DashboardSummary cards={filteredCards} />
 
-        <div className="bg-white rounded-lg shadow p-4">
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="flex-1 min-w-[300px]">
-              <DateRangeFilter onDateRangeChange={setDateRange} />
-            </div>
-
-            <div className="relative min-w-[200px]">
-              <input
-                type="text"
-                placeholder="Search guest name..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-              />
-              <svg
-                className="absolute left-2.5 top-2 h-4 w-4 text-gray-400"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                />
-              </svg>
-            </div>
-            
-            <div className="flex items-center gap-4">
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="border border-gray-300 rounded-md px-3 py-1.5 text-sm bg-white focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option>All Status</option>
-                <option>Active</option>
-                <option>Recent</option>
-                <option>Canceled</option>
-                <option>No-show</option>
-                <option>Reconciled - modified</option>
-                <option>Unknown</option>
-              </select>
-
-              <select
-                value={pageSize}
-                onChange={(e) => setPageSize(Number(e.target.value))}
-                className="border border-gray-300 rounded-md px-3 py-1.5 text-sm bg-white focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value={10}>10 per page</option>
-                <option value={25}>25 per page</option>
-                <option value={50}>50 per page</option>
-                <option value={100}>100 per page</option>
-              </select>
-            </div>
+        <div className="mb-6 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+          <DateRangeFilter 
+            value={dateRange} 
+            onChange={setDateRange} 
+          />
+          
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="Search..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+            />
+            <Search className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
           </div>
         </div>
 
-        <div className="bg-white rounded-lg shadow mt-4">
-          <VirtualCardTable
-            cards={paginatedCards}
-            sortConfig={sortConfig}
-            onSort={handleSort}
-            onUpdate={(updatedCard?: VirtualCard) => {
-              if (updatedCard) {
-                setReservations(prevReservations => 
-                  prevReservations.map(card => 
-                    card.id === updatedCard.id ? updatedCard : card
-                  )
-                );
-              } else {
-                // Refresh the entire list when no specific card is provided
-                refreshReservations();
-              }
-            }}
-          />
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between px-6 py-4 border-t">
-              <div className="text-sm text-gray-700">
-                Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, filteredCards.length)} of {filteredCards.length} entries
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => handlePageChange(currentPage - 1)}
-                  disabled={currentPage === 1}
-                  className={`px-3 py-1 rounded ${
-                    currentPage === 1
-                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                      : 'bg-white text-gray-700 hover:bg-gray-50 border'
-                  }`}
-                >
-                  Previous
-                </button>
-                {(() => {
-                  const pages = [];
-                  const maxButtons = 5;
-                  const halfMaxButtons = Math.floor(maxButtons / 2);
-
-                  if (totalPages <= maxButtons) {
-                    // Show all pages if total pages is less than max buttons
-                    for (let i = 1; i <= totalPages; i++) {
-                      pages.push(i);
-                    }
-                  } else {
-                    // Always show first page
-                    pages.push(1);
-
-                    // Calculate start and end of middle section
-                    let startPage = Math.max(2, currentPage - halfMaxButtons);
-                    let endPage = Math.min(totalPages - 1, startPage + maxButtons - 3);
-                    startPage = Math.max(2, endPage - maxButtons + 3);
-
-                    // Add ellipsis after first page if needed
-                    if (startPage > 2) {
-                      pages.push('...');
-                    }
-
-                    // Add middle pages
-                    for (let i = startPage; i <= endPage; i++) {
-                      pages.push(i);
-                    }
-
-                    // Add ellipsis before last page if needed
-                    if (endPage < totalPages - 1) {
-                      pages.push('...');
-                    }
-
-                    // Always show last page
-                    pages.push(totalPages);
-                  }
-
-                  return pages.map((page, index) => 
-                    page === '...' ? (
-                      <span key={`ellipsis-${index}`} className="px-3 py-1">...</span>
-                    ) : (
-                      <button
-                        key={page}
-                        onClick={() => handlePageChange(page as number)}
-                        className={`px-3 py-1 rounded ${
-                          currentPage === page
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-white text-gray-700 hover:bg-gray-50 border'
-                        }`}
-                      >
-                        {page}
-                      </button>
-                    )
-                  );
-                })()}
-                <button
-                  onClick={() => handlePageChange(currentPage + 1)}
-                  disabled={currentPage === totalPages}
-                  className={`px-3 py-1 rounded ${
-                    currentPage === totalPages
-                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                      : 'bg-white text-gray-700 hover:bg-gray-50 border'
-                  }`}
-                >
-                  Next
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
+        <VirtualCardTable 
+          cards={paginatedCards}
+          setCards={setReservations}
+          sortConfig={sortConfig}
+          onSort={handleSort}
+          onUpdate={handleCardUpdate}
+        />
       </div>
     </div>
   );
 }
+
+export default App;

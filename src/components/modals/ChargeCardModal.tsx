@@ -9,7 +9,7 @@ interface ChargeCardModalProps {
   isOpen: boolean;
   onClose: () => void;
   card: VirtualCard;
-  onUpdate?: (updatedCard: VirtualCard) => void;
+  onUpdate?: (updatedCard?: VirtualCard) => void;
 }
 
 interface ApiErrorResponse {
