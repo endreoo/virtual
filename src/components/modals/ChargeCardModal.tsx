@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Modal } from '../ui/Modal';
 import { VirtualCard, Transaction, PaymentMethod, ActiveTab, PaymentMethodOption } from '../../types';
-import { CreditCard, DollarSign, Send, CreditCard as StripeIcon, Globe, ClipboardCheck, XCircle, AlignLeft, ArrowUpCircle, ArrowDownCircle, AlertCircle, ExternalLink } from 'lucide-react';
+import { CreditCard, DollarSign, Send, CreditCard as StripeIcon, Globe, ClipboardCheck, XCircle, AlignLeft, ArrowUpCircle, ArrowDownCircle, AlertCircle, ExternalLink, AlertTriangle } from 'lucide-react';
 import apiService from '../../utils/api';
 import type { AxiosError } from 'axios';
 
@@ -28,6 +28,7 @@ export function ChargeCardModal({ isOpen, onClose, card, onUpdate }: ChargeCardM
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loadingTransactions, setLoadingTransactions] = useState(false);
   const [transactionError, setTransactionError] = useState<string | null>(null);
+  const [showConfirmation, setShowConfirmation] = useState(false);
 
   // Reset state when modal opens or card changes
   useEffect(() => {
@@ -175,6 +176,44 @@ export function ChargeCardModal({ isOpen, onClose, card, onUpdate }: ChargeCardM
     }
   };
 
+  const handleDoNotCharge = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      console.log('Processing Do Not Charge:', { 
+        reservation_id: card.id,
+        amount_usd: card.remainingBalance,
+        hotel_id: card.hotelId,
+        expedia_reservation_id: card.expediaReservationId
+      });
+
+      await apiService.post('/api/cards/do-not-charge', { 
+        reservation_id: card.id,
+        amount_usd: card.remainingBalance,
+        payment_channel: 'Do Not Charge',
+        hotel_id: card.hotelId || null,
+        expedia_reservation_id: card.expediaReservationId || card.id,
+        created_at: new Date().toISOString(),
+        type_of_transaction: 'Do Not Charge'
+      });
+
+      if (onUpdate) {
+        onUpdate({
+          ...card,
+          status: 'Do Not Charge'
+        });
+      }
+      onClose();
+    } catch (err) {
+      const error = err as AxiosError<ApiErrorResponse>;
+      console.error('Do Not Charge Error:', error.response?.data || error.message);
+      setError(error.response?.data?.message || error.message || 'Failed to process do not charge');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -185,33 +224,16 @@ export function ChargeCardModal({ isOpen, onClose, card, onUpdate }: ChargeCardM
         await processFlutterwavePayment();
         break;
       case 'stripe':
-        // Stripe implementation will go here
         console.log('Stripe payment:', { amount, card });
         break;
       case 'manual':
-        // Manual payment implementation will go here
         console.log('Manual payment:', { amount, card });
         break;
       case 'link':
-        // Send payment link implementation will go here
         console.log('Send payment link:', { amount, card });
         break;
       case 'doNotCharge':
-        try {
-          setLoading(true);
-          setError(null);
-          // Update the card status to "do not charge"
-          await apiService.post('/api/cards/do-not-charge', { 
-            cardId: card.id,
-            reason: 'Marked as do not charge via UI'
-          });
-          onClose();
-        } catch (err) {
-          const error = err as AxiosError<ApiErrorResponse>;
-          setError(error.response?.data?.message || error.message || 'Failed to update card status');
-        } finally {
-          setLoading(false);
-        }
+        setShowConfirmation(true);
         break;
     }
   };
@@ -348,7 +370,76 @@ export function ChargeCardModal({ isOpen, onClose, card, onUpdate }: ChargeCardM
       title="Reservation Details"
       maxWidth="max-w-5xl"
     >
-      {card ? (
+      {showConfirmation ? (
+        <div className="space-y-6">
+          <div className="bg-red-50 p-4 rounded-lg">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="h-5 w-5 text-red-500" />
+              <div className="text-sm text-red-700">
+                Please confirm that you want to mark this card as "Do Not Charge"
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <h4 className="text-lg font-medium text-gray-900 mb-4">Reservation Details</h4>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-sm text-gray-500">Guest Name</p>
+                <p className="font-medium">{card.guestName || 'N/A'}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">Hotel</p>
+                <p className="font-medium">{card.Hotel}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">Check In</p>
+                <p className="font-medium">{card.checkInDate}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">Check Out</p>
+                <p className="font-medium">{card.checkOutDate}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">Amount</p>
+                <p className="font-medium text-red-600">{card.currency} {card.remainingBalance}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">Booking Source</p>
+                <p className="font-medium">{card.bookingSource || 'N/A'}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end space-x-3">
+            <button
+              type="button"
+              onClick={() => setShowConfirmation(false)}
+              disabled={loading}
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+            >
+              Back
+            </button>
+            <button
+              onClick={handleDoNotCharge}
+              disabled={loading}
+              className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
+            >
+              {loading ? (
+                <>
+                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  Processing...
+                </>
+              ) : (
+                'Confirm Do Not Charge'
+              )}
+            </button>
+          </div>
+        </div>
+      ) : (
         <div className="space-y-6">
           {error && (
             <div className={`${
@@ -778,10 +869,6 @@ export function ChargeCardModal({ isOpen, onClose, card, onUpdate }: ChargeCardM
               </div>
             )}
           </div>
-        </div>
-      ) : (
-        <div className="p-4 text-center text-gray-500">
-          Loading reservation details...
         </div>
       )}
     </Modal>

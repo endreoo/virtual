@@ -3,6 +3,8 @@ import { ChevronUp, ChevronDown } from 'lucide-react';
 import type { VirtualCard, SortConfig } from '../../types';
 import { ChargeCardModal } from '../modals/ChargeCardModal';
 
+type ModalType = 'charge' | null;
+
 interface VirtualCardTableProps {
   cards: VirtualCard[];
   sortConfig: SortConfig;
@@ -18,6 +20,7 @@ type ColumnConfig = {
 
 const columns: ColumnConfig[] = [
   { key: 'id', label: 'ID', width: '80px' },
+  { key: 'guestName', label: 'Guest Name', width: '150px' },
   { key: 'Hotel', label: 'Hotel', width: '200px' },
   { key: 'checkInDate', label: 'Check In', width: '120px' },
   { key: 'checkOutDate', label: 'Check Out', width: '120px' },

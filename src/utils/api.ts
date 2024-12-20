@@ -1,9 +1,12 @@
 import axios, { AxiosRequestConfig, AxiosResponse, AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { VirtualCard } from '../types';
 
-const baseURL = window.location.hostname === 'localhost' 
-  ? 'http://localhost:5000' 
-  : `${window.location.protocol}//${window.location.hostname}`;
+// Determine if we're in development or production
+const isDevelopment = window.location.hostname === 'localhost';
+
+const baseURL = isDevelopment
+  ? 'http://localhost:5000'
+  : 'https://finance.hotelonline.co';
 
 console.log('[API] Using base URL:', baseURL);
 

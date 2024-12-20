@@ -16,6 +16,8 @@ export interface VirtualCard {
   fullSidePanelText?: string;
   lastScrapedAt?: string;
   bookingSource?: string;
+  hotelId?: number;
+  expediaReservationId?: number;
 }
 
 export type Transaction = {

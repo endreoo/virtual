@@ -164,6 +164,107 @@ app.post('/api/cards/update-notes', async (req, res) => {
   }
 });
 
+// Add do-not-charge endpoint
+app.post('/api/cards/do-not-charge', async (req, res) => {
+  console.log('[API] Processing do not charge request:', req.body);
+  try {
+    const { 
+      reservation_id,
+      amount_usd,
+      payment_channel,
+      expedia_reservation_id,
+      created_at,
+      type_of_transaction
+    } = req.body;
+    
+    // Validate required fields
+    if (!reservation_id || !amount_usd || !expedia_reservation_id) {
+      console.log('[API] Missing required fields:', { reservation_id, amount_usd, expedia_reservation_id });
+      return res.status(400).json({ 
+        status: 'error',
+        message: 'Missing required fields' 
+      });
+    }
+
+    // First, get the hotel_id from expedia_reservations
+    console.log('[API] Fetching hotel_id for reservation:', reservation_id);
+    const [hotelRows] = await pool.execute(
+      'SELECT hotel_id FROM expedia_reservations WHERE id = ?',
+      [reservation_id]
+    );
+    console.log('[API] Hotel query result:', hotelRows);
+
+    if (!hotelRows || hotelRows.length === 0) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Reservation not found'
+      });
+    }
+
+    const hotel_id = hotelRows[0].hotel_id;
+    console.log('[API] Found hotel_id:', hotel_id);
+
+    // Format the created_at datetime for MySQL
+    const formattedCreatedAt = new Date(created_at).toISOString().slice(0, 19).replace('T', ' ');
+    console.log('[API] Formatted created_at:', formattedCreatedAt);
+
+    // Insert transaction record
+    const insertQuery = `
+      INSERT INTO card_transactions (
+        reservation_id,
+        amount_usd,
+        payment_channel,
+        hotel_id,
+        expedia_reservation_id,
+        created_at,
+        type_of_transaction
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    const insertValues = [
+      reservation_id,
+      amount_usd,
+      payment_channel,
+      hotel_id,
+      expedia_reservation_id,
+      formattedCreatedAt,
+      type_of_transaction
+    ];
+
+    console.log('[API] Executing insert query:', insertQuery.replace(/\s+/g, ' '));
+    console.log('[API] With values:', insertValues);
+
+    const [insertResult] = await pool.execute(insertQuery, insertValues);
+    console.log('[API] Insert result:', insertResult);
+
+    // Update reservation status
+    const updateQuery = 'UPDATE expedia_reservations SET status = ? WHERE id = ?';
+    const updateValues = ['Do Not Charge', reservation_id];
+
+    console.log('[API] Executing update query:', updateQuery);
+    console.log('[API] With values:', updateValues);
+
+    const [updateResult] = await pool.execute(updateQuery, updateValues);
+    console.log('[API] Update result:', updateResult);
+
+    res.json({ 
+      status: 'success',
+      message: 'Do Not Charge processed successfully',
+      transaction_id: insertResult.insertId,
+      details: {
+        transaction: insertResult,
+        update: updateResult
+      }
+    });
+  } catch (error) {
+    console.error('[API] Error processing do not charge:', error);
+    res.status(500).json({ 
+      status: 'error',
+      message: error.message || 'Failed to process do not charge request'
+    });
+  }
+});
+
 app.listen(port, '0.0.0.0', () => {
   console.log(`[Server] Started at http://0.0.0.0:${port}`);
   console.log('[Server] Press Ctrl+C to stop');
