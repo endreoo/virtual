@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { VirtualCardTable } from './components/table/VirtualCardTable';
 import { DashboardSummary } from './components/dashboard/DashboardSummary';
 import { DateRangeFilter } from './components/DateRangeFilter';
-import { Search } from 'lucide-react';
+import { Search, LogOut } from 'lucide-react';
 import { VirtualCard } from './types';
 import { getReservations } from './utils/api';
 import { DateRange } from '@mui/x-date-pickers-pro';
@@ -27,6 +27,7 @@ export function App(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(10);
+  const [showChargeableOnly, setShowChargeableOnly] = useState(true);
   const [sortConfig, setSortConfig] = useState<{
     key: keyof VirtualCard | null;
     direction: 'asc' | 'desc';
@@ -83,6 +84,7 @@ export function App(): JSX.Element {
 
   const filterCards = (cards: VirtualCard[]) => {
     return cards.filter(card => {
+      // Always check for checkInDate
       if (!card.checkInDate) return false;
 
       // Search filter
@@ -115,6 +117,12 @@ export function App(): JSX.Element {
         }
       }
 
+      // Chargeable only filter - apply last
+      if (showChargeableOnly) {
+        return card.remainingBalance !== undefined && card.remainingBalance >= 0.49;
+      }
+
+      // If not showing chargeable only, include all records
       return true;
     });
   };
@@ -124,17 +132,25 @@ export function App(): JSX.Element {
     if (!sortConfig.key) return filteredCards;
 
     return [...filteredCards].sort((a, b) => {
-      if (a[sortConfig.key] === null) return 1;
-      if (b[sortConfig.key] === null) return -1;
+      const key = sortConfig.key as keyof VirtualCard;
+      if (!key) return 0;
       
-      const aValue = a[sortConfig.key];
-      const bValue = b[sortConfig.key];
+      const aValue = a[key];
+      const bValue = b[key];
+
+      if (aValue === null || aValue === undefined) return 1;
+      if (bValue === null || bValue === undefined) return -1;
       
       if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
       if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [reservations, sortConfig, dateRange, searchQuery]);
+  }, [reservations, sortConfig, dateRange, searchQuery, showChargeableOnly]);
+
+  const paginatedCards = useMemo(() => {
+    const startIndex = (currentPage - 1) * pageSize;
+    return sortedCards.slice(startIndex, startIndex + pageSize);
+  }, [sortedCards, currentPage, pageSize]);
 
   const handleCardUpdate = (updatedCard?: VirtualCard) => {
     if (updatedCard) {
@@ -146,13 +162,6 @@ export function App(): JSX.Element {
     }
   };
 
-  const paginatedCards = useMemo(() => {
-    const startIndex = (currentPage - 1) * pageSize;
-    return sortedCards.slice(startIndex, startIndex + pageSize);
-  }, [sortedCards, currentPage, pageSize]);
-
-  const totalPages = Math.ceil(sortedCards.length / pageSize);
-
   const handlePageChange = (newPage: number) => {
     setCurrentPage(newPage);
   };
@@ -160,7 +169,12 @@ export function App(): JSX.Element {
   // Reset to first page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, statusFilter, dateRange, pageSize]);
+  }, [searchQuery, statusFilter, dateRange, pageSize, showChargeableOnly]);
+
+  const handleLogout = () => {
+    localStorage.removeItem('isAuthenticated');
+    setIsAuthenticated(false);
+  };
 
   if (!isAuthenticated) {
     return (
@@ -237,36 +251,64 @@ export function App(): JSX.Element {
 
   return (
     <div className="min-h-screen bg-gray-100">
+      <div className="bg-white shadow">
+        <div className="container mx-auto px-4">
+          <div className="flex justify-between items-center py-4">
+            <h1 className="text-2xl font-semibold text-gray-900">Virtual Cards Dashboard</h1>
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            >
+              <LogOut className="h-4 w-4" />
+              Logout
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div className="container mx-auto px-4 py-8">
         <div className="mb-8">
           <DashboardSummary cards={sortedCards} />
         </div>
 
-        <div className="mb-6 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-          <DateRangeFilter 
-            value={dateRange} 
-            onChange={setDateRange} 
-          />
-          
-          <div className="relative">
-            <input
-              type="text"
-              placeholder="Search..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-            />
-            <Search className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
+        <div className="bg-white shadow rounded-lg p-6 mb-8">
+          <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
+            <div className="w-full md:w-auto">
+              <DateRangeFilter 
+                value={dateRange} 
+                onChange={setDateRange} 
+              />
+            </div>
+            
+            <div className="relative w-full md:w-72">
+              <input
+                type="text"
+                placeholder="Search by guest, hotel, or ID..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+              />
+              <Search className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
+            </div>
           </div>
         </div>
 
-        <VirtualCardTable 
-          cards={paginatedCards}
-          setCards={setReservations}
-          sortConfig={sortConfig}
-          onSort={handleSort}
-          onUpdate={handleCardUpdate}
-        />
+        <div className="bg-white shadow rounded-lg">
+          <VirtualCardTable 
+            cards={paginatedCards}
+            setCards={setReservations}
+            sortConfig={sortConfig}
+            onSort={handleSort}
+            onUpdate={handleCardUpdate}
+            currentPage={currentPage}
+            setCurrentPage={setCurrentPage}
+            pageSize={pageSize}
+            setPageSize={setPageSize}
+            totalItems={sortedCards.length}
+            showChargeableOnly={showChargeableOnly}
+            setShowChargeableOnly={setShowChargeableOnly}
+          />
+        </div>
       </div>
     </div>
   );

@@ -1,250 +1,140 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowUpDown, Info, DollarSign, FileText, Edit3, XCircle, ChevronUp, ChevronDown } from 'lucide-react';
-import type { VirtualCard } from '../../types/index';
-import { InfoModal } from '../modals/InfoModal';
+import { VirtualCard } from '../../types';
 import { ChargeCardModal } from '../modals/ChargeCardModal';
-import { NotesModal } from '../modals/NotesModal';
+import { formatCurrency } from '../../utils/formatCurrency';
+import { ChevronDown, ChevronUp } from 'lucide-react';
+import { Checkbox } from '../ui/Checkbox';
 import { MassDoNotChargeModal } from '../modals/MassDoNotChargeModal';
-import apiService from '../../utils/api';
 import { doNotCharge } from '../../utils/api';
 
 interface VirtualCardTableProps {
   cards: VirtualCard[];
-  setCards: (cards: VirtualCard[]) => void;
+  setCards: React.Dispatch<React.SetStateAction<VirtualCard[]>>;
   sortConfig: {
     key: keyof VirtualCard | null;
     direction: 'asc' | 'desc';
   };
   onSort: (key: keyof VirtualCard) => void;
-  onUpdate?: (updatedCard?: VirtualCard) => void;
+  onUpdate: (updatedCard?: VirtualCard) => void;
+  currentPage: number;
+  setCurrentPage: (page: number) => void;
+  pageSize: number;
+  setPageSize: (size: number) => void;
+  totalItems: number;
+  showChargeableOnly: boolean;
+  setShowChargeableOnly: (show: boolean) => void;
 }
 
-type ModalType = 'info' | 'charge' | 'notes' | 'massDoNotCharge' | null;
-
-export function VirtualCardTable({ cards, setCards, sortConfig, onSort, onUpdate }: VirtualCardTableProps) {
-  const [activeModal, setActiveModal] = useState<ModalType>(null);
+export function VirtualCardTable({ 
+  cards, 
+  setCards, 
+  sortConfig, 
+  onSort, 
+  onUpdate,
+  currentPage,
+  setCurrentPage,
+  pageSize,
+  setPageSize,
+  totalItems,
+  showChargeableOnly,
+  setShowChargeableOnly
+}: VirtualCardTableProps): JSX.Element {
   const [selectedCard, setSelectedCard] = useState<VirtualCard | null>(null);
-  const [selectedCards, setSelectedCards] = useState<string[]>([]);
+  const [selectedCards, setSelectedCards] = useState<VirtualCard[]>([]);
+  const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [showMassDoNotCharge, setShowMassDoNotCharge] = useState(false);
-  const [showChargeableOnly, setShowChargeableOnly] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
 
-  useEffect(() => {
-    const fetchCards = async () => {
-      try {
-        setLoading(true);
-        const response = await apiService.get<VirtualCard[]>(`/api/reservations?showChargeable=${showChargeableOnly}`);
-        setCards(response.data);
-      } catch (error) {
-        console.error('Error fetching cards:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchCards();
-  }, [showChargeableOnly, setCards]);
-
-  const openModal = (type: ModalType, card: VirtualCard) => {
+  const handleRowClick = (card: VirtualCard): void => {
     setSelectedCard(card);
-    setActiveModal(type);
+    setIsModalOpen(true);
   };
 
-  const closeModal = () => {
+  const handleModalClose = (): void => {
+    setIsModalOpen(false);
     setSelectedCard(null);
-    setActiveModal(null);
   };
 
-  const handleSelectAll = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (event.target.checked) {
-      setSelectedCards(cards.map(card => card.id));
-    } else {
-      setSelectedCards([]);
-    }
-  };
-
-  const handleSelectCard = (cardId: string) => {
-    setSelectedCards(prev => {
-      if (prev.includes(cardId)) {
-        return prev.filter(id => id !== cardId);
-      } else {
-        return [...prev, cardId];
+  const handleCheckboxChange = (checked: boolean, card: VirtualCard): void => {
+    setSelectedCards((prev) => {
+      if (checked) {
+        return [...prev, card];
       }
+      return prev.filter((c) => c.id !== card.id);
     });
-  };
-
-  const handleMassDoNotCharge = () => {
-    setActiveModal('massDoNotCharge');
   };
 
   const handleConfirmMassDoNotCharge = async (cardIds: string[]) => {
     setIsProcessing(true);
     try {
-      console.log('[Mass Do Not Charge] Starting process with cardIds:', cardIds);
+      console.log('[Mass Do Not Charge] Starting process with card IDs:', cardIds);
       
       // Process each card sequentially
       for (const cardId of cardIds) {
-        console.log('[Mass Do Not Charge] Looking for card with ID:', cardId);
-        const card = cards.find(c => c.id === cardId);
-        
-        if (card) {
-          console.log('[Mass Do Not Charge] Found card:', {
-            id: card.id,
-            hotelId: card.hotelId,
-            remainingBalance: card.remainingBalance
-          });
-          
-          const payload = {
-            reservation_id: card.id,
-            amount_usd: card.remainingBalance || 0,
-            payment_channel: 'Do Not Charge',
-            hotel_id: card.hotelId || null,
-            expedia_reservation_id: parseInt(card.id),
-            created_at: new Date().toISOString(),
-            type_of_transaction: 'Do Not Charge'
-          };
-
-          console.log('[Mass Do Not Charge] Built payload:', payload);
-          console.log('[Mass Do Not Charge] Sending request with payload:', payload);
-          await doNotCharge(payload);
-          console.log('[Mass Do Not Charge] Card processed successfully:', cardId);
-        } else {
-          console.error('[Mass Do Not Charge] Card not found for ID:', cardId);
+        console.log('[Mass Do Not Charge] Processing card:', cardId);
+        const card = selectedCards.find(c => c.id === cardId);
+        if (!card) {
+          console.warn(`[Mass Do Not Charge] Card not found for ID: ${cardId}`);
+          continue;
         }
+        
+        const payload = {
+          reservation_id: card.id,
+          amount_usd: card.remainingBalance || 0,
+          payment_channel: 'Do Not Charge',
+          expedia_reservation_id: parseInt(card.id),
+          created_at: new Date().toISOString(),
+          type_of_transaction: 'Do Not Charge'
+        };
+
+        console.log('[Mass Do Not Charge] Sending request with payload:', payload);
+        await doNotCharge(payload);
+        console.log('[Mass Do Not Charge] Card processed successfully:', cardId);
       }
       
       console.log('[Mass Do Not Charge] All cards processed successfully');
       
-      // Clear selection and close modal first
+      // Clear selection and close modal
       setSelectedCards([]);
-      closeModal();
+      setShowMassDoNotCharge(false);
       
-      // Then refresh the table data
-      if (onUpdate) {
-        onUpdate();
-      }
+      // Refresh the table data
+      onUpdate();
     } catch (error: any) {
       console.error('[Mass Do Not Charge] Error:', error);
-      console.error('[Mass Do Not Charge] Error details:', {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status
-      });
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const selectedCardsData = cards.filter(card => selectedCards.includes(card.id));
-
-  const renderSortIcon = (columnKey: keyof VirtualCard) => {
-    if (sortConfig.key !== columnKey) {
-      return <ChevronUp className="w-4 h-4 text-gray-400 opacity-0 group-hover:opacity-100" />;
+  const renderSortIcon = (key: keyof VirtualCard) => {
+    if (sortConfig.key !== key) {
+      return <ChevronDown className="h-4 w-4 text-gray-400" />;
     }
     return sortConfig.direction === 'asc' 
-      ? <ChevronUp className="w-4 h-4 text-blue-500" />
-      : <ChevronDown className="w-4 h-4 text-blue-500" />;
+      ? <ChevronUp className="h-4 w-4 text-blue-500" />
+      : <ChevronDown className="h-4 w-4 text-blue-500" />;
   };
 
-  const renderCell = (card: VirtualCard, column: keyof VirtualCard) => {
-    const value = card[column];
-    
-    switch (column) {
-      case 'guestName':
-        return <div className="text-sm text-gray-900">{value || 'N/A'}</div>;
-      case 'status':
-        const status = value?.toString() || '';
-        if (!status || status === 'Unknown') {
-          return <span></span>;
-        }
-        const statusMap = {
-          'Active': { bg: 'bg-green-100', text: 'text-green-800' },
-          'Recent': { bg: 'bg-blue-100', text: 'text-blue-800' },
-          'Canceled': { bg: 'bg-red-100', text: 'text-red-800' },
-          'No-show': { bg: 'bg-yellow-100', text: 'text-yellow-800' },
-          'Reconciled - modified': { bg: 'bg-purple-100', text: 'text-purple-800' }
-        };
-        const { bg, text } = statusMap[status as keyof typeof statusMap] || { bg: '', text: '' };
-        return (
-          <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${bg} ${text}`}>
-            {status}
-          </span>
-        );
-      case 'remainingBalance':
-        const amount = Number(value) || 0;
-        return (
-          <div className="text-sm text-gray-900">
-            ${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </div>
-        );
-      case 'Hotel':
-        return (
-          <div className="text-sm text-gray-900 break-words leading-snug max-h-20 overflow-hidden">
-            {value || 'N/A'}
-          </div>
-        );
-      case 'bookingSource':
-        const source = value?.toString() || 'Unknown';
-        const sourceMap = {
-          'Expedia': { color: 'text-blue-600', short: 'EXP' },
-          'Expedia Affiliate Network': { color: 'text-blue-800', short: 'EAN' },
-          'Hotels': { color: 'text-indigo-600', short: 'HTL' },
-          'Booking.com': { color: 'text-blue-500', short: 'BKG' },
-          'American Express': { color: 'text-purple-600', short: 'AMEX' },
-          'Orbitz': { color: 'text-green-600', short: 'ORB' },
-          'Travelocity': { color: 'text-red-600', short: 'TVL' },
-          'Egencia': { color: 'text-orange-600', short: 'EGN' },
-          'Wotif': { color: 'text-yellow-600', short: 'WTF' }
-        };
-        const { color, short } = sourceMap[source as keyof typeof sourceMap] || { color: 'text-gray-600', short: source.substring(0, 4) };
-        return (
-          <div 
-            className={`text-sm ${color} font-medium truncate`}
-            title={source}
-          >
-            {short}
-          </div>
-        );
-      case 'checkInDate':
-      case 'checkOutDate':
-        const date = value ? new Date(value.toString()).toLocaleDateString('en-US', {
-          year: 'numeric',
-          month: 'short',
-          day: 'numeric'
-        }) : 'N/A';
-        return <div className="text-sm text-gray-900">{date}</div>;
-      default:
-        return <div className="text-sm text-gray-900">{value?.toString() || 'N/A'}</div>;
+  // Calculate pagination
+  const totalPages = Math.ceil(totalItems / pageSize);
+  const startIndex = (currentPage - 1) * pageSize;
+
+  const handlePageChange = (page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
     }
   };
 
-  const columns: { key: keyof VirtualCard; label: string; width: string }[] = [
-    { key: 'id', label: 'ID', width: 'w-20' },
-    { key: 'guestName', label: 'Guest Name', width: 'w-48' },
-    { key: 'Hotel', label: 'Hotel', width: 'w-64' },
-    { key: 'checkInDate', label: 'Check In', width: 'w-32' },
-    { key: 'checkOutDate', label: 'Check Out', width: 'w-32' },
-    { key: 'remainingBalance', label: 'Balance', width: 'w-28' },
-    { key: 'status', label: 'Status', width: 'w-28' },
-    { key: 'bookingSource', label: 'Source', width: 'w-36' }
-  ];
-
-  const totalPages = Math.ceil(cards.length / pageSize);
-  const startIndex = (currentPage - 1) * pageSize;
-  const paginatedCards = cards.slice(startIndex, startIndex + pageSize);
-
-  const handlePageChange = (newPage: number) => {
-    setCurrentPage(newPage);
+  const handlePageSizeChange = (newSize: number) => {
+    setPageSize(newSize);
+    setCurrentPage(1); // Reset to first page when changing page size
   };
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="mb-6 flex justify-between items-center">
+    <div className="space-y-4">
+      <div className="flex justify-between items-center">
         <div className="flex items-center space-x-4">
-          <h1 className="text-2xl font-semibold text-gray-900">Virtual Cards</h1>
           <div className="flex items-center space-x-2">
             <span className="text-sm text-gray-600">
               {showChargeableOnly ? 'Chargeable Only' : 'All Records'}
@@ -264,226 +154,305 @@ export function VirtualCardTable({ cards, setCards, sortConfig, onSort, onUpdate
               />
             </button>
           </div>
+          <select
+            value={pageSize}
+            onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+            className="border border-gray-300 rounded-md px-3 py-1.5 text-sm bg-white focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+          >
+            <option value={10}>10 per page</option>
+            <option value={25}>25 per page</option>
+            <option value={50}>50 per page</option>
+            <option value={100}>100 per page</option>
+          </select>
         </div>
+
         {selectedCards.length > 0 && (
           <button
+            type="button"
             onClick={() => setShowMassDoNotCharge(true)}
-            className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
           >
-            Do Not Charge Selected ({selectedCards.length})
+            Mass Do Not Charge ({selectedCards.length})
           </button>
         )}
       </div>
 
-      <div className="bg-white rounded-lg shadow">
-        <div className="flex justify-between items-center p-4 border-b">
+      <div className="relative overflow-x-auto bg-white rounded-lg shadow">
+        <table className="w-full text-sm text-left table-fixed">
+          <colgroup>
+            <col className="w-10" /> {/* Checkbox */}
+            <col className="w-24" /> {/* ID */}
+            <col className="w-48" /> {/* Guest Name */}
+            <col className="w-48" /> {/* Hotel */}
+            <col className="w-32" /> {/* Check In */}
+            <col className="w-32" /> {/* Check Out */}
+            <col className="w-32" /> {/* Amount */}
+            <col className="w-32" /> {/* Status */}
+          </colgroup>
+          <thead className="text-xs text-gray-700 uppercase bg-gray-50">
+            <tr>
+              <th scope="col" className="p-4">
+                <Checkbox
+                  checked={selectedCards.length === cards.length && cards.length > 0}
+                  onCheckedChange={(checked: boolean) => {
+                    if (checked) {
+                      setSelectedCards(cards);
+                    } else {
+                      setSelectedCards([]);
+                    }
+                  }}
+                />
+              </th>
+              <th 
+                scope="col" 
+                className="px-6 py-3 cursor-pointer hover:bg-gray-100"
+                onClick={() => onSort('id')}
+              >
+                <div className="flex items-center gap-2">
+                  ID
+                  {renderSortIcon('id')}
+                </div>
+              </th>
+              <th 
+                scope="col" 
+                className="px-6 py-3 cursor-pointer hover:bg-gray-100"
+                onClick={() => onSort('guestName')}
+              >
+                <div className="flex items-center gap-2">
+                  Guest Name
+                  {renderSortIcon('guestName')}
+                </div>
+              </th>
+              <th 
+                scope="col" 
+                className="px-6 py-3 cursor-pointer hover:bg-gray-100"
+                onClick={() => onSort('Hotel')}
+              >
+                <div className="flex items-center gap-2">
+                  Hotel
+                  {renderSortIcon('Hotel')}
+                </div>
+              </th>
+              <th 
+                scope="col" 
+                className="px-6 py-3 cursor-pointer hover:bg-gray-100"
+                onClick={() => onSort('checkInDate')}
+              >
+                <div className="flex items-center gap-2">
+                  Check In
+                  {renderSortIcon('checkInDate')}
+                </div>
+              </th>
+              <th 
+                scope="col" 
+                className="px-6 py-3 cursor-pointer hover:bg-gray-100"
+                onClick={() => onSort('checkOutDate')}
+              >
+                <div className="flex items-center gap-2">
+                  Check Out
+                  {renderSortIcon('checkOutDate')}
+                </div>
+              </th>
+              <th 
+                scope="col" 
+                className="px-6 py-3 cursor-pointer hover:bg-gray-100"
+                onClick={() => onSort('remainingBalance')}
+              >
+                <div className="flex items-center gap-2">
+                  Amount
+                  {renderSortIcon('remainingBalance')}
+                </div>
+              </th>
+              <th 
+                scope="col" 
+                className="px-6 py-3 cursor-pointer hover:bg-gray-100"
+                onClick={() => onSort('status')}
+              >
+                <div className="flex items-center gap-2">
+                  Status
+                  {renderSortIcon('status')}
+                </div>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {cards.map((card) => (
+              <tr
+                key={card.id}
+                className="bg-white border-b hover:bg-gray-50 cursor-pointer"
+                onClick={(e) => {
+                  const target = e.target as HTMLElement;
+                  if (!target.closest('.checkbox-cell')) {
+                    handleRowClick(card);
+                  }
+                }}
+              >
+                <td className="p-4 checkbox-cell">
+                  <Checkbox
+                    checked={selectedCards.some((c) => c.id === card.id)}
+                    onCheckedChange={(checked: boolean) => handleCheckboxChange(checked, card)}
+                  />
+                </td>
+                <td className="px-6 py-4 truncate text-sm text-gray-900">{card.id}</td>
+                <td className="px-6 py-4 truncate font-medium text-gray-900">{card.guestName || 'N/A'}</td>
+                <td className="px-6 py-4 truncate">{card.Hotel}</td>
+                <td className="px-6 py-4 truncate">{card.checkInDate}</td>
+                <td className="px-6 py-4 truncate">{card.checkOutDate}</td>
+                <td className="px-6 py-4 truncate font-medium">{formatCurrency(card.remainingBalance, card.currency)}</td>
+                <td className="px-6 py-4">
+                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                    card.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                  }`}>
+                    {card.status}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        {/* Pagination */}
+        <div className="flex items-center justify-between px-4 py-3 border-t">
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => handlePageChange(1)}
+              disabled={currentPage === 1}
+              className={`px-3 py-1.5 border rounded text-sm font-medium ${
+                currentPage === 1
+                  ? 'text-gray-400 border-gray-200 bg-gray-50 cursor-not-allowed'
+                  : 'text-gray-700 border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              First
+            </button>
+            <button
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={currentPage === 1}
+              className={`px-3 py-1.5 border rounded text-sm font-medium ${
+                currentPage === 1
+                  ? 'text-gray-400 border-gray-200 bg-gray-50 cursor-not-allowed'
+                  : 'text-gray-700 border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              Previous
+            </button>
+
+            <div className="flex items-center space-x-1">
+              {(() => {
+                let pages = [];
+                const maxVisiblePages = 5;
+                const halfVisible = Math.floor(maxVisiblePages / 2);
+
+                if (totalPages <= maxVisiblePages) {
+                  pages = Array.from({ length: totalPages }, (_, i) => i + 1);
+                } else {
+                  let start = Math.max(1, currentPage - halfVisible);
+                  let end = Math.min(totalPages, start + maxVisiblePages - 1);
+
+                  if (end - start < maxVisiblePages - 1) {
+                    start = Math.max(1, end - maxVisiblePages + 1);
+                  }
+
+                  if (start > 1) {
+                    pages.push(1);
+                    if (start > 2) pages.push('...');
+                  }
+
+                  for (let i = start; i <= end; i++) {
+                    pages.push(i);
+                  }
+
+                  if (end < totalPages) {
+                    if (end < totalPages - 1) pages.push('...');
+                    pages.push(totalPages);
+                  }
+                }
+
+                return pages.map((page, index) => {
+                  if (page === '...') {
+                    return (
+                      <span key={`ellipsis-${index}`} className="px-2 py-1.5 text-sm text-gray-500">
+                        ...
+                      </span>
+                    );
+                  }
+
+                  return (
+                    <button
+                      key={page}
+                      onClick={() => handlePageChange(page as number)}
+                      className={`min-w-[2.25rem] px-2 py-1.5 border rounded text-sm font-medium ${
+                        currentPage === page
+                          ? 'bg-blue-600 text-white border-blue-600'
+                          : 'text-gray-700 border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      {page}
+                    </button>
+                  );
+                });
+              })()}
+            </div>
+
+            <button
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={currentPage === totalPages}
+              className={`px-3 py-1.5 border rounded text-sm font-medium ${
+                currentPage === totalPages
+                  ? 'text-gray-400 border-gray-200 bg-gray-50 cursor-not-allowed'
+                  : 'text-gray-700 border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              Next
+            </button>
+            <button
+              onClick={() => handlePageChange(totalPages)}
+              disabled={currentPage === totalPages}
+              className={`px-3 py-1.5 border rounded text-sm font-medium ${
+                currentPage === totalPages
+                  ? 'text-gray-400 border-gray-200 bg-gray-50 cursor-not-allowed'
+                  : 'text-gray-700 border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              Last
+            </button>
+          </div>
+
           <div className="flex items-center space-x-4">
             <select
               value={pageSize}
-              onChange={(e) => {
-                setPageSize(Number(e.target.value));
-                setCurrentPage(1);
-              }}
-              className="border border-gray-300 rounded-md px-3 py-1.5 text-sm bg-white focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+              onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+              className="border border-gray-300 rounded px-3 py-1.5 text-sm bg-white focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
             >
               <option value={10}>10 per page</option>
               <option value={25}>25 per page</option>
               <option value={50}>50 per page</option>
               <option value={100}>100 per page</option>
             </select>
-            <span className="text-sm text-gray-600">
-              Showing {startIndex + 1} to {Math.min(startIndex + pageSize, cards.length)} of {cards.length} entries
-            </span>
-          </div>
-        </div>
 
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="w-12 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  <input
-                    type="checkbox"
-                    checked={selectedCards.length === cards.length}
-                    onChange={handleSelectAll}
-                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                  />
-                </th>
-                {columns.map((column) => (
-                  <th
-                    key={column.key}
-                    onClick={() => onSort(column.key)}
-                    className={`${column.width} px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 group`}
-                  >
-                    <div className="flex items-center gap-1">
-                      {column.label}
-                      {renderSortIcon(column.key)}
-                    </div>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {paginatedCards.map((card) => (
-                <tr 
-                  key={card.id} 
-                  className="hover:bg-gray-50 cursor-pointer"
-                  onClick={(e) => {
-                    // Don't open modal if clicking on checkbox
-                    if ((e.target as HTMLElement).tagName === 'INPUT') {
-                      return;
-                    }
-                    openModal('charge', card);
-                  }}
-                >
-                  <td 
-                    className="w-12 px-6 py-4 whitespace-nowrap"
-                    onClick={(e) => e.stopPropagation()} // Prevent row click when clicking checkbox
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedCards.includes(card.id)}
-                      onChange={() => handleSelectCard(card.id)}
-                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                    />
-                  </td>
-                  {columns.map((column) => (
-                    <td 
-                      key={column.key}
-                      className={`${column.width} px-6 py-4 ${
-                        column.key === 'Hotel' 
-                          ? 'min-h-[4rem] align-top' 
-                          : ''
-                      }`}
-                    >
-                      {renderCell(card, column.key)}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t">
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={() => handlePageChange(currentPage - 1)}
-                disabled={currentPage === 1}
-                className={`px-2 py-1 rounded text-sm ${
-                  currentPage === 1
-                    ? 'text-gray-400 cursor-not-allowed'
-                    : 'text-gray-700 hover:bg-gray-50'
-                }`}
-              >
-                ←
-              </button>
-              {(() => {
-                const pages = [];
-                const maxVisiblePages = 3; // Reduced from 5 to 3
-                const halfVisible = Math.floor(maxVisiblePages / 2);
-                
-                let startPage = Math.max(1, currentPage - halfVisible);
-                let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
-                
-                if (endPage - startPage + 1 < maxVisiblePages) {
-                  startPage = Math.max(1, endPage - maxVisiblePages + 1);
-                }
-
-                // First page
-                if (startPage > 1) {
-                  pages.push(
-                    <button
-                      key={1}
-                      onClick={() => handlePageChange(1)}
-                      className="px-2 py-1 rounded text-sm text-gray-700 hover:bg-gray-50"
-                    >
-                      1
-                    </button>
-                  );
-                  if (startPage > 2) {
-                    pages.push(
-                      <span key="ellipsis1" className="px-1 text-gray-500">
-                        •••
-                      </span>
-                    );
-                  }
-                }
-
-                // Visible pages
-                for (let i = startPage; i <= endPage; i++) {
-                  pages.push(
-                    <button
-                      key={i}
-                      onClick={() => handlePageChange(i)}
-                      className={`px-2 py-1 rounded text-sm ${
-                        currentPage === i
-                          ? 'bg-blue-600 text-white'
-                          : 'text-gray-700 hover:bg-gray-50'
-                      }`}
-                    >
-                      {i}
-                    </button>
-                  );
-                }
-
-                // Last page
-                if (endPage < totalPages) {
-                  if (endPage < totalPages - 1) {
-                    pages.push(
-                      <span key="ellipsis2" className="px-1 text-gray-500">
-                        •••
-                      </span>
-                    );
-                  }
-                  pages.push(
-                    <button
-                      key={totalPages}
-                      onClick={() => handlePageChange(totalPages)}
-                      className="px-2 py-1 rounded text-sm text-gray-700 hover:bg-gray-50"
-                    >
-                      {totalPages}
-                    </button>
-                  );
-                }
-
-                return pages;
-              })()}
-              <button
-                onClick={() => handlePageChange(currentPage + 1)}
-                disabled={currentPage === totalPages}
-                className={`px-2 py-1 rounded text-sm ${
-                  currentPage === totalPages
-                    ? 'text-gray-400 cursor-not-allowed'
-                    : 'text-gray-700 hover:bg-gray-50'
-                }`}
-              >
-                →
-              </button>
-            </div>
             <div className="text-sm text-gray-600">
-              Page {currentPage} of {totalPages}
+              Showing {cards.length > 0 ? startIndex + 1 : 0} to {Math.min(startIndex + pageSize, totalItems)} of {totalItems} entries
             </div>
           </div>
-        )}
+        </div>
       </div>
 
-      {/* Modals */}
-      {activeModal === 'massDoNotCharge' && (
-        <MassDoNotChargeModal
-          isOpen={true}
-          onClose={closeModal}
-          selectedCards={selectedCardsData}
-          onConfirm={handleConfirmMassDoNotCharge}
-        />
-      )}
-      {activeModal === 'charge' && selectedCard && (
+      {selectedCard && (
         <ChargeCardModal
-          isOpen={true}
-          onClose={closeModal}
+          isOpen={isModalOpen}
+          onClose={handleModalClose}
           card={selectedCard}
           onUpdate={onUpdate}
+        />
+      )}
+
+      {showMassDoNotCharge && (
+        <MassDoNotChargeModal
+          isOpen={true}
+          onClose={() => setShowMassDoNotCharge(false)}
+          selectedCards={selectedCards}
+          onConfirm={handleConfirmMassDoNotCharge}
+          isProcessing={isProcessing}
         />
       )}
     </div>

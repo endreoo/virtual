@@ -60,11 +60,11 @@ export function DateRangeFilter({ value, onChange }: DateRangeFilterProps): JSX.
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg border ${
+        className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border ${
           value[0] || value[1]
-            ? 'bg-blue-50 border-blue-200 text-blue-700'
-            : 'bg-white border-gray-300 text-gray-700'
-        } hover:bg-blue-50 hover:border-blue-300 transition-colors min-w-[280px] justify-between`}
+            ? 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100'
+            : 'bg-white border-gray-300 text-gray-700 hover:border-gray-400'
+        } transition-colors min-w-[280px] justify-between shadow-sm`}
       >
         <div className="flex items-center gap-2">
           <Calendar className="w-4 h-4 text-blue-600" />
@@ -76,25 +76,27 @@ export function DateRangeFilter({ value, onChange }: DateRangeFilterProps): JSX.
             tabIndex={0}
             onClick={handleClear}
             onKeyDown={(e) => e.key === 'Enter' && handleClear(e as unknown as React.MouseEvent<HTMLDivElement>)}
-            className="cursor-pointer"
+            className="cursor-pointer hover:bg-blue-100 rounded-full p-1"
           >
-            <X className="w-4 h-4 text-gray-400 hover:text-gray-600" />
+            <X className="w-4 h-4 text-blue-600" />
           </div>
         )}
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 mt-2 z-50 bg-white rounded-lg shadow-xl border border-gray-200">
-          <DatePicker
-            selected={value[0]}
-            startDate={value[0]}
-            endDate={value[1]}
-            selectsRange={true}
-            onChange={(update: [Date | null, Date | null]) => handleChange(update)}
-            inline
-            dateFormat="MMM d, yyyy"
-            calendarClassName="shadow-none"
-          />
+        <div className="absolute top-full left-0 mt-2 z-50">
+          <div className="bg-white rounded-lg shadow-xl border border-gray-200 p-4">
+            <DatePicker
+              selected={value[0]}
+              startDate={value[0]}
+              endDate={value[1]}
+              selectsRange={true}
+              onChange={(update: [Date | null, Date | null]) => handleChange(update)}
+              inline
+              dateFormat="MMM d, yyyy"
+              calendarClassName="shadow-none"
+            />
+          </div>
         </div>
       )}
     </div>
