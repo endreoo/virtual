@@ -1,19 +1,19 @@
 import React, { useState, useRef, useEffect } from 'react';
 import DatePicker from 'react-datepicker';
 import { Calendar, X } from 'lucide-react';
-import "react-datepicker/dist/react-datepicker.css";
+import 'react-datepicker/dist/react-datepicker.css';
 
 interface DateRangeFilterProps {
   value: [Date | null, Date | null];
   onChange: (range: [Date | null, Date | null]) => void;
 }
 
-export function DateRangeFilter({ value, onChange }: DateRangeFilterProps) {
-  const [isOpen, setIsOpen] = useState(false);
+export function DateRangeFilter({ value, onChange }: DateRangeFilterProps): JSX.Element {
+  const [isOpen, setIsOpen] = useState<boolean>(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
+    function handleClickOutside(event: MouseEvent): void {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
         setIsOpen(false);
       }
@@ -25,17 +25,17 @@ export function DateRangeFilter({ value, onChange }: DateRangeFilterProps) {
     };
   }, []);
 
-  const handleChange = (update: [Date | null, Date | null]) => {
+  const handleChange = (update: [Date | null, Date | null]): void => {
     onChange(update);
     if (update[1]) { // Close after selecting end date
       setIsOpen(false);
     }
   };
 
-  const formatDateRange = () => {
+  const formatDateRange = (): string => {
     if (!value[0] && !value[1]) return 'Check-in Dates';
     
-    const formatDate = (date: Date) => {
+    const formatDate = (date: Date): string => {
       return date.toLocaleDateString('en-US', {
         month: 'short',
         day: 'numeric',
@@ -49,7 +49,7 @@ export function DateRangeFilter({ value, onChange }: DateRangeFilterProps) {
     return value[0] ? formatDate(value[0]) : 'Check-in Dates';
   };
 
-  const handleClear = (e: React.MouseEvent) => {
+  const handleClear = (e: React.MouseEvent<HTMLDivElement>): void => {
     e.stopPropagation();
     onChange([null, null]);
     setIsOpen(false);
@@ -58,6 +58,7 @@ export function DateRangeFilter({ value, onChange }: DateRangeFilterProps) {
   return (
     <div className="relative" ref={containerRef}>
       <button
+        type="button"
         onClick={() => setIsOpen(!isOpen)}
         className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg border ${
           value[0] || value[1]
@@ -70,10 +71,15 @@ export function DateRangeFilter({ value, onChange }: DateRangeFilterProps) {
           <span className="text-sm font-medium">{formatDateRange()}</span>
         </div>
         {(value[0] || value[1]) && (
-          <X 
-            className="w-4 h-4 text-gray-400 hover:text-gray-600" 
+          <div 
+            role="button"
+            tabIndex={0}
             onClick={handleClear}
-          />
+            onKeyDown={(e) => e.key === 'Enter' && handleClear(e as unknown as React.MouseEvent<HTMLDivElement>)}
+            className="cursor-pointer"
+          >
+            <X className="w-4 h-4 text-gray-400 hover:text-gray-600" />
+          </div>
         )}
       </button>
 

@@ -382,18 +382,26 @@ app.get('/api/cards/:id/payments', async (req, res) => {
     const [rows] = await pool.execute(`
       SELECT 
         id,
-        amountCharged,
-        dateOfPayment,
-        paymentChannel,
-        referenceNumber,
+        amount_usd as amountCharged,
+        created_at as dateOfPayment,
+        payment_channel as paymentChannel,
+        reference_number as referenceNumber,
+        type_of_transaction as transactionType,
         notes
-      FROM card_payments 
+      FROM card_transactions 
       WHERE reservation_id = ?
-      ORDER BY dateOfPayment DESC
+      ORDER BY created_at DESC
     `, [req.params.id]);
 
-    console.log(`[API] Found ${rows.length} payments`);
-    res.json(rows);
+    // Format the dates and ensure numeric values
+    const formattedRows = rows.map(row => ({
+      ...row,
+      amountCharged: Number(row.amountCharged),
+      dateOfPayment: new Date(row.dateOfPayment).toISOString()
+    }));
+
+    console.log(`[API] Found ${formattedRows.length} payments:`, formattedRows);
+    res.json(formattedRows);
   } catch (error) {
     console.error('[API] Error fetching payments:', error);
     res.status(500).json({ 
