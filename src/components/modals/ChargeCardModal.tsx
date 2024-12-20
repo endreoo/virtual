@@ -18,6 +18,8 @@ interface ApiErrorResponse {
 }
 
 export function ChargeCardModal({ isOpen, onClose, card, onUpdate }: ChargeCardModalProps) {
+  if (!card) return null;
+
   const [activeTab, setActiveTab] = useState<ActiveTab>('info');
   const [amount, setAmount] = useState(card?.remainingBalance?.toString() || '0');
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>(null);
@@ -181,34 +183,46 @@ export function ChargeCardModal({ isOpen, onClose, card, onUpdate }: ChargeCardM
       setLoading(true);
       setError(null);
       
-      console.log('Processing Do Not Charge:', { 
+      const payload = {
         reservation_id: card.id,
-        amount_usd: card.remainingBalance,
-        hotel_id: card.hotelId,
-        expedia_reservation_id: card.expediaReservationId
-      });
-
-      await apiService.post('/api/cards/do-not-charge', { 
-        reservation_id: card.id,
-        amount_usd: card.remainingBalance,
+        amount_usd: card.remainingBalance || 0,
         payment_channel: 'Do Not Charge',
         hotel_id: card.hotelId || null,
-        expedia_reservation_id: card.expediaReservationId || card.id,
+        expedia_reservation_id: parseInt(card.id),
         created_at: new Date().toISOString(),
         type_of_transaction: 'Do Not Charge'
-      });
+      };
 
-      if (onUpdate) {
-        onUpdate({
-          ...card,
-          status: 'Do Not Charge'
-        });
+      console.log('[Do Not Charge] Sending request with payload:', payload);
+      
+      const response = await apiService.post('/api/cards/do-not-charge', payload);
+      console.log('[Do Not Charge] Response:', response.data);
+
+      if (response.data.status === 'success' || response.status === 200) {
+        if (onUpdate) {
+          onUpdate({
+            ...card,
+            status: 'Do Not Charge'
+          });
+        }
+        onClose();
+      } else {
+        throw new Error(response.data.message || 'Failed to process do not charge');
       }
-      onClose();
     } catch (err) {
       const error = err as AxiosError<ApiErrorResponse>;
-      console.error('Do Not Charge Error:', error.response?.data || error.message);
-      setError(error.response?.data?.message || error.message || 'Failed to process do not charge');
+      console.error('[Do Not Charge] Error:', {
+        message: error.message,
+        status: error.response?.status,
+        data: error.response?.data,
+        config: error.config
+      });
+      setError(
+        error.response?.data?.message || 
+        error.response?.data?.details || 
+        error.message || 
+        'Failed to process do not charge'
+      );
     } finally {
       setLoading(false);
     }
