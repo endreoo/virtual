@@ -20,18 +20,16 @@ export interface VirtualCard {
   expedia_reservation_id?: number;
 }
 
-export type Transaction = {
-  id: string;
-  type: 'payment' | 'refund' | 'adjustment';
-  amount: number;
-  description: string;
-  status: 'success' | 'pending' | 'failed';
-  createdAt: string;
-  balanceAfter: number;
+export interface Transaction {
+  id: number;
+  amountCharged: number;
+  dateOfPayment: string;
+  paymentChannel: string;
   referenceNumber?: string;
-};
+  notes?: string;
+}
 
-export type PaymentMethod = 'flutterwave' | 'stripe' | 'manual' | 'link' | 'doNotCharge' | null;
+export type PaymentMethod = 'flutterwave' | 'stripe' | 'manual' | 'link' | 'doNotCharge' | 'im_bank' | null;
 
 export type ActiveTab = 'info' | 'payment' | 'notes' | 'transactions';
 

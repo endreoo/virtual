@@ -68,7 +68,7 @@ export function ChargeCardModal({ isOpen, onClose, card, onUpdate }: ChargeCardM
     try {
       setLoadingTransactions(true);
       setTransactionError(null);
-      const response = await apiService.get<Transaction[]>(`/api/cards/${card.id}/transactions`);
+      const response = await apiService.get<Transaction[]>(`/api/cards/${card.id}/payments`);
       setTransactions(response.data);
     } catch (err) {
       const error = err as AxiosError<ApiErrorResponse>;
@@ -394,23 +394,12 @@ export function ChargeCardModal({ isOpen, onClose, card, onUpdate }: ChargeCardM
     }
   };
 
-  const renderTransactionIcon = (transaction: Transaction) => {
-    switch (transaction.type) {
-      case 'payment':
-        return <ArrowDownCircle className="h-5 w-5 text-green-500" />;
-      case 'refund':
-        return <ArrowUpCircle className="h-5 w-5 text-red-500" />;
-      case 'adjustment':
-        return <AlertCircle className="h-5 w-5 text-yellow-500" />;
-      default:
-        return <AlertCircle className="h-5 w-5 text-gray-500" />;
-    }
-  };
-
   const formatAmount = (amount: number) => {
+    // Default to USD if no currency is specified
+    const currency = card?.currency || 'USD';
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: card.currency
+      currency: currency
     }).format(amount);
   };
 
@@ -480,6 +469,71 @@ export function ChargeCardModal({ isOpen, onClose, card, onUpdate }: ChargeCardM
       bgSelected: 'bg-red-50 ring-red-500'
     }
   ];
+
+  const renderTransactionsTab = () => {
+    if (loadingTransactions) {
+      return (
+        <div className="flex items-center justify-center p-4">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+        </div>
+      );
+    }
+
+    if (transactionError) {
+      return (
+        <div className="flex items-center justify-center p-4 text-red-500">
+          <AlertTriangle className="w-5 h-5 mr-2" />
+          {transactionError}
+        </div>
+      );
+    }
+
+    if (!transactions.length) {
+      return (
+        <div className="flex flex-col items-center justify-center p-4 text-gray-500">
+          <CreditCard className="w-8 h-8 mb-2" />
+          <p>No payment history found</p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Channel</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Reference</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Notes</th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {transactions.map((transaction) => (
+              <tr key={transaction.id}>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  {new Date(transaction.dateOfPayment).toLocaleDateString()}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  {(card?.currency || 'USD')} {transaction.amountCharged.toFixed(2)}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  {transaction.paymentChannel}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  {transaction.referenceNumber || '-'}
+                </td>
+                <td className="px-6 py-4 text-sm text-gray-900">
+                  {transaction.notes || '-'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
 
   return (
     <Modal
@@ -1046,78 +1100,7 @@ export function ChargeCardModal({ isOpen, onClose, card, onUpdate }: ChargeCardM
                 </div>
 
                 {/* Transaction List */}
-                {loadingTransactions ? (
-                  <div className="text-center py-8">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
-                    <div className="mt-2 text-gray-500">Loading transactions...</div>
-                  </div>
-                ) : transactionError ? (
-                  <div className="text-center py-8 text-red-500">
-                    {transactionError}
-                  </div>
-                ) : transactions.length === 0 ? (
-                  <div className="text-center py-8 text-gray-500">
-                    No transactions found
-                  </div>
-                ) : (
-                  <div className="overflow-hidden border border-gray-200 rounded-lg">
-                    <table className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
-                          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
-                          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Balance After</th>
-                          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-gray-200">
-                        {transactions.map((transaction) => (
-                          <tr key={transaction.id}>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="flex items-center">
-                                {renderTransactionIcon(transaction)}
-                                <span className="ml-2 text-sm text-gray-900 capitalize">{transaction.type}</span>
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                              {formatDate(transaction.createdAt)}
-                            </td>
-                            <td className="px-6 py-4 text-sm text-gray-900">
-                              <div className="flex flex-col">
-                                <span>{transaction.description}</span>
-                                {transaction.referenceNumber && (
-                                  <span className="text-xs text-gray-500">Ref: {transaction.referenceNumber}</span>
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm">
-                              <span className={`font-medium ${
-                                transaction.type === 'payment' ? 'text-green-600' : 
-                                transaction.type === 'refund' ? 'text-red-600' : 
-                                'text-gray-900'
-                              }`}>
-                                {formatAmount(transaction.amount)}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                              {formatAmount(transaction.balanceAfter)}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full
-                                ${transaction.status === 'success' ? 'bg-green-100 text-green-800' : 
-                                  transaction.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : 
-                                  'bg-red-100 text-red-800'}`}>
-                                {transaction.status}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                {renderTransactionsTab()}
               </div>
             )}
           </div>

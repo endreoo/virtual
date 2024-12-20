@@ -369,6 +369,34 @@ app.post('/api/cards/manual-payment', async (req, res) => {
   }
 });
 
+// Add endpoint to fetch card payments
+app.get('/api/cards/:id/payments', async (req, res) => {
+  console.log('[API] Fetching payments for card:', req.params.id);
+  try {
+    const [rows] = await pool.execute(`
+      SELECT 
+        id,
+        amountCharged,
+        dateOfPayment,
+        paymentChannel,
+        referenceNumber,
+        notes
+      FROM card_payments 
+      WHERE reservation_id = ?
+      ORDER BY dateOfPayment DESC
+    `, [req.params.id]);
+
+    console.log(`[API] Found ${rows.length} payments`);
+    res.json(rows);
+  } catch (error) {
+    console.error('[API] Error fetching payments:', error);
+    res.status(500).json({ 
+      status: 'error',
+      message: error.message || 'Failed to fetch payments'
+    });
+  }
+});
+
 app.listen(port, '0.0.0.0', () => {
   console.log(`[Server] Started at http://0.0.0.0:${port}`);
   console.log('[Server] Press Ctrl+C to stop');
