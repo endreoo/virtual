@@ -73,6 +73,19 @@ interface DoNotChargePayload {
   type_of_transaction: string;
 }
 
+interface ManualPaymentPayload {
+  reservation_id: string;
+  amount_usd: number;
+  payment_channel: string;
+  payment_method: string;
+  reference_number: string;
+  notes: string;
+  hotel_id: string | null;
+  expedia_reservation_id: number;
+  created_at: string;
+  type_of_transaction: string;
+}
+
 export const doNotCharge = async (payload: DoNotChargePayload): Promise<any> => {
   try {
     console.log('[API] Sending Do Not Charge request:', payload);
@@ -81,6 +94,22 @@ export const doNotCharge = async (payload: DoNotChargePayload): Promise<any> => 
     return response.data;
   } catch (error: any) {
     console.error('[API] Do Not Charge request failed:', {
+      message: error.message,
+      response: error.response?.data,
+      status: error.response?.status
+    });
+    throw error;
+  }
+};
+
+export const manualPayment = async (payload: ManualPaymentPayload): Promise<any> => {
+  try {
+    console.log('[API] Sending Manual Payment request:', payload);
+    const response = await apiService.post('/api/cards/manual-payment', payload);
+    console.log('[API] Manual Payment response:', response.data);
+    return response.data;
+  } catch (error: any) {
+    console.error('[API] Manual Payment request failed:', {
       message: error.message,
       response: error.response?.data,
       status: error.response?.status

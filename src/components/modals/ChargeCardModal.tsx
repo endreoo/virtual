@@ -27,10 +27,17 @@ export function ChargeCardModal({ isOpen, onClose, card, onUpdate }: ChargeCardM
   const [error, setError] = useState<string | null>(null);
   const [showRawText, setShowRawText] = useState(false);
   const [notes, setNotes] = useState(card?.notes || '');
+  const [imBankNotes, setImBankNotes] = useState('');
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loadingTransactions, setLoadingTransactions] = useState(false);
   const [transactionError, setTransactionError] = useState<string | null>(null);
   const [showConfirmation, setShowConfirmation] = useState(false);
+  const [showManualPayment, setShowManualPayment] = useState(false);
+  const [manualPaymentDetails, setManualPaymentDetails] = useState({
+    referenceNumber: '',
+    paymentMethod: 'mpesa',
+    notes: ''
+  });
 
   // Reset state when modal opens or card changes
   useEffect(() => {
@@ -228,6 +235,71 @@ export function ChargeCardModal({ isOpen, onClose, card, onUpdate }: ChargeCardM
     }
   };
 
+  const handleManualPayment = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const numericAmount = parseFloat(amount);
+      if (isNaN(numericAmount) || numericAmount <= 0) {
+        setError('Please enter a valid amount greater than 0');
+        return;
+      }
+
+      const payload = {
+        reservation_id: card.id,
+        amount_usd: numericAmount,
+        payment_channel: manualPaymentDetails.paymentMethod,
+        payment_method: manualPaymentDetails.paymentMethod,
+        reference_number: manualPaymentDetails.referenceNumber,
+        notes: manualPaymentDetails.notes,
+        hotel_id: card.hotelId || null,
+        expedia_reservation_id: parseInt(card.id),
+        created_at: new Date().toISOString(),
+        type_of_transaction: 'Payment'
+      };
+
+      console.log('[Manual Payment] Sending request with payload:', payload);
+      console.log('[Manual Payment] Using endpoint:', '/api/cards/do-not-charge');
+      
+      const response = await apiService.post('/api/cards/do-not-charge', payload);
+      console.log('[Manual Payment] Response:', response.data);
+
+      if (response.data.status === 'success' || response.status === 200) {
+        if (onUpdate) {
+          onUpdate({
+            ...card,
+            remainingBalance: (card.remainingBalance || 0) - numericAmount
+          });
+        }
+        onClose();
+      } else {
+        throw new Error(response.data.message || 'Failed to process manual payment');
+      }
+    } catch (err) {
+      const error = err as AxiosError<ApiErrorResponse>;
+      console.error('[Manual Payment] Error:', {
+        message: error.message,
+        status: error.response?.status,
+        data: error.response?.data,
+        config: {
+          url: error.config?.url,
+          method: error.config?.method,
+          baseURL: error.config?.baseURL,
+          data: error.config?.data
+        }
+      });
+      setError(
+        error.response?.data?.message || 
+        error.response?.data?.details || 
+        error.message || 
+        'Failed to process manual payment'
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -240,8 +312,31 @@ export function ChargeCardModal({ isOpen, onClose, card, onUpdate }: ChargeCardM
       case 'stripe':
         console.log('Stripe payment:', { amount, card });
         break;
+      case 'im_bank':
+        try {
+          const payload = {
+            reservation_id: card.id,
+            amount_usd: parseFloat(amount),
+            payment_channel: 'I&M Bank',
+            payment_method: 'im_bank',
+            notes: imBankNotes,
+            hotel_id: card.hotelId || null,
+            expedia_reservation_id: parseInt(card.id),
+            created_at: new Date().toISOString(),
+            type_of_transaction: 'Payment'
+          };
+          
+          console.log('[I&M Bank] Recording payment attempt:', payload);
+          await apiService.post('/api/cards/record-payment', payload);
+          
+          window.open('https://merchantadmin.host.iveri.com', '_blank');
+          onClose();
+        } catch (err) {
+          console.error('[I&M Bank] Failed to record payment attempt:', err);
+        }
+        break;
       case 'manual':
-        console.log('Manual payment:', { amount, card });
+        setShowManualPayment(true);
         break;
       case 'link':
         console.log('Send payment link:', { amount, card });
@@ -349,6 +444,15 @@ export function ChargeCardModal({ isOpen, onClose, card, onUpdate }: ChargeCardM
       bgSelected: 'bg-purple-50 ring-purple-500'
     },
     {
+      id: 'im_bank',
+      name: 'I&M Bank',
+      icon: CreditCard,
+      description: 'Process payment via I&M Bank',
+      color: 'text-indigo-500',
+      bgHover: 'hover:bg-indigo-50',
+      bgSelected: 'bg-indigo-50 ring-indigo-500'
+    },
+    {
       id: 'manual',
       name: 'Manual',
       icon: ClipboardCheck,
@@ -384,7 +488,126 @@ export function ChargeCardModal({ isOpen, onClose, card, onUpdate }: ChargeCardM
       title="Reservation Details"
       maxWidth="max-w-5xl"
     >
-      {showConfirmation ? (
+      {showManualPayment ? (
+        <div className="space-y-6">
+          <div className="bg-blue-50 p-4 rounded-lg">
+            <div className="flex items-center gap-3">
+              <DollarSign className="h-5 w-5 text-blue-500" />
+              <div className="text-sm text-blue-700">
+                Register Manual Payment for {card.guestName || `${card.Hotel} - Reservation ${card.id}`}
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <h4 className="text-lg font-medium text-gray-900 mb-4">Payment Details</h4>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-sm text-gray-500">Guest Name</p>
+                <p className="font-medium">{card.guestName || 'N/A'}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">Hotel</p>
+                <p className="font-medium">{card.Hotel}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">Amount</p>
+                <p className="font-medium text-green-600">{card.currency} {amount}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">Booking Source</p>
+                <p className="font-medium">{card.bookingSource || 'N/A'}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Payment Method
+              </label>
+              <select
+                value={manualPaymentDetails.paymentMethod}
+                onChange={(e) => setManualPaymentDetails(prev => ({ ...prev, paymentMethod: e.target.value }))}
+                className="w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+              >
+                <option value="mpesa">Mpesa</option>
+                <option value="absa_kes">ABSA KES</option>
+                <option value="absa_usd">ABSA USD</option>
+                <option value="flutterwave">Flutterwave</option>
+                <option value="stripe_im">Stripe I&M</option>
+                <option value="cash">Cash</option>
+                <option value="bank_transfer">Bank Transfer</option>
+                <option value="check">Check</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Reference Number
+              </label>
+              <input
+                type="text"
+                value={manualPaymentDetails.referenceNumber}
+                onChange={(e) => setManualPaymentDetails(prev => ({ ...prev, referenceNumber: e.target.value }))}
+                placeholder="Enter payment reference number"
+                className="w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Notes
+              </label>
+              <textarea
+                value={manualPaymentDetails.notes}
+                onChange={(e) => setManualPaymentDetails(prev => ({ ...prev, notes: e.target.value }))}
+                placeholder="Enter any additional notes about this payment"
+                rows={3}
+                className="w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+              />
+            </div>
+          </div>
+
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <div className="flex items-center gap-3">
+                <div className="text-sm text-red-700">{error}</div>
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-end space-x-3">
+            <button
+              type="button"
+              onClick={() => setShowManualPayment(false)}
+              disabled={loading}
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+            >
+              Back
+            </button>
+            <button
+              onClick={handleManualPayment}
+              disabled={loading || !manualPaymentDetails.referenceNumber.trim()}
+              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
+            >
+              {loading ? (
+                <>
+                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  Processing...
+                </>
+              ) : (
+                'Confirm Payment'
+              )}
+            </button>
+          </div>
+        </div>
+      ) : showConfirmation ? (
         <div className="space-y-6">
           <div className="bg-red-50 p-4 rounded-lg">
             <div className="flex items-center gap-3">
@@ -658,6 +881,21 @@ export function ChargeCardModal({ isOpen, onClose, card, onUpdate }: ChargeCardM
                     </div>
                   </div>
 
+                  {selectedMethod === 'im_bank' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Payment Notes
+                      </label>
+                      <textarea
+                        value={imBankNotes}
+                        onChange={(e) => setImBankNotes(e.target.value)}
+                        placeholder="Enter any notes about this I&M Bank payment"
+                        rows={3}
+                        className="w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      />
+                    </div>
+                  )}
+
                   {/* Payment Methods */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-3">
@@ -682,12 +920,12 @@ export function ChargeCardModal({ isOpen, onClose, card, onUpdate }: ChargeCardM
                                   <p className="text-sm text-gray-500">{method.description}</p>
                                 </div>
                               </div>
-                              <div className={`h-4 w-4 rounded-full border flex items-center justify-center
+                              <div className={`h-5 w-5 rounded-full border flex items-center justify-center
                                 ${selectedMethod === method.id ? method.color + ' border-current' : 'border-gray-300'}
                               `}>
-                                {selectedMethod === method.id && (
-                                  <div className={`h-2 w-2 rounded-full ${method.color.replace('text-', 'bg-')}`} />
-                                )}
+                                <div className={`h-3 w-3 rounded-full transition-all
+                                  ${selectedMethod === method.id ? method.color.replace('text-', 'bg-') : 'bg-transparent'}
+                                `} />
                               </div>
                             </div>
                           </div>

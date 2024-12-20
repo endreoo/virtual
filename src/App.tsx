@@ -322,12 +322,17 @@ export function App(): JSX.Element {
             cards={paginatedCards}
             sortConfig={sortConfig}
             onSort={handleSort}
-            onUpdate={(updatedCard) => {
-              setReservations(prevReservations => 
-                prevReservations.map(card => 
-                  card.id === updatedCard.id ? updatedCard : card
-                )
-              );
+            onUpdate={(updatedCard?: VirtualCard) => {
+              if (updatedCard) {
+                setReservations(prevReservations => 
+                  prevReservations.map(card => 
+                    card.id === updatedCard.id ? updatedCard : card
+                  )
+                );
+              } else {
+                // Refresh the entire list when no specific card is provided
+                refreshReservations();
+              }
             }}
           />
           {totalPages > 1 && (

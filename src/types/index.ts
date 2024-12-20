@@ -1,13 +1,25 @@
+import { LucideIcon } from 'lucide-react';
+
 export interface VirtualCard {
   id: string;
+  cardNumber?: string;
+  expirationDate?: string;
+  cvv?: string;
+  currency: string;
   guestName: string;
+  Hotel: string;
   checkInDate: string;
   checkOutDate: string;
-  Hotel: string;
   remainingBalance: number;
+  initialBalance?: number;
   status: string;
+  notes?: string;
+  card_status?: string;
+  fullSidePanelText?: string;
+  lastScrapedAt?: string;
   bookingSource: string;
-  currency: string;
+  hotelId?: number;
+  expedia_reservation_id?: number;
 }
 
 export interface Transaction {
@@ -24,15 +36,18 @@ export interface Transaction {
   metadata?: Record<string, any>;
 }
 
-export type PaymentMethod = 'flutterwave' | 'stripe' | 'manual' | 'link' | 'doNotCharge' | null;
+export type PaymentMethod = 'flutterwave' | 'stripe' | 'im_bank' | 'manual' | 'link' | 'doNotCharge' | null;
 
 export type ActiveTab = 'info' | 'payment' | 'notes' | 'transactions';
 
 export interface PaymentMethodOption {
   id: PaymentMethod;
   name: string;
-  icon?: string;
+  icon: LucideIcon;
   description: string;
+  color: string;
+  bgHover: string;
+  bgSelected: string;
 }
 
 export type SortDirection = 'asc' | 'desc';

@@ -17,7 +17,7 @@ export interface VirtualCard {
   lastScrapedAt?: string;
   bookingSource?: string;
   hotelId?: number;
-  expediaReservationId?: number;
+  expedia_reservation_id?: number;
 }
 
 export type Transaction = {
