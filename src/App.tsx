@@ -119,7 +119,9 @@ export function App(): JSX.Element {
 
       // Chargeable only filter - apply last
       if (showChargeableOnly) {
-        return card.remainingBalance !== undefined && card.remainingBalance >= 0.49;
+        return card.remainingBalance !== undefined && 
+               card.remainingBalance >= 0.49 && 
+               card.status !== 'Do Not Charge';
       }
 
       // If not showing chargeable only, include all records

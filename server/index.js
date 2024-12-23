@@ -411,6 +411,50 @@ app.get('/api/cards/:id/payments', async (req, res) => {
   }
 });
 
+// Add update-status endpoint
+app.post('/api/cards/update-status', async (req, res) => {
+  console.log('[API] Updating card status, request body:', req.body);
+  try {
+    const { id, status } = req.body;
+    
+    if (!id || !status) {
+      console.log('[API] Error: Missing required fields');
+      return res.status(400).json({ 
+        status: 'error',
+        message: 'ID and status are required' 
+      });
+    }
+
+    console.log(`[API] Executing update query for card ${id} with status:`, status);
+    const [result] = await pool.execute(
+      'UPDATE expedia_reservations SET status = ? WHERE id = ?',
+      [status, id]
+    );
+    console.log('[API] Update result:', result);
+
+    // Check if any rows were affected
+    if (result.affectedRows === 0) {
+      console.log('[API] No rows were updated');
+      return res.status(404).json({
+        status: 'error',
+        message: 'Card not found or no changes made'
+      });
+    }
+
+    res.json({ 
+      status: 'success',
+      message: 'Status updated successfully',
+      newStatus: status
+    });
+  } catch (err) {
+    console.error('[API] Error updating status:', err);
+    res.status(500).json({ 
+      status: 'error',
+      message: err.message || 'Failed to update status'
+    });
+  }
+});
+
 app.listen(port, '0.0.0.0', () => {
   console.log(`[Server] Started at http://0.0.0.0:${port}`);
   console.log('[Server] Press Ctrl+C to stop');

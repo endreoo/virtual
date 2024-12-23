@@ -2,10 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { VirtualCard } from '../../types';
 import { ChargeCardModal } from '../modals/ChargeCardModal';
 import { formatCurrency } from '../../utils/formatCurrency';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, ArrowUpDown } from 'lucide-react';
 import { Checkbox } from '../ui/Checkbox';
 import { MassDoNotChargeModal } from '../modals/MassDoNotChargeModal';
-import { doNotCharge } from '../../utils/api';
+import { doNotCharge, updateCardStatus } from '../../utils/api';
+
+interface ColumnConfig {
+  key: keyof VirtualCard;
+  label: string;
+  sortable: boolean;
+}
 
 interface VirtualCardTableProps {
   cards: VirtualCard[];
@@ -24,6 +30,8 @@ interface VirtualCardTableProps {
   showChargeableOnly: boolean;
   setShowChargeableOnly: (show: boolean) => void;
 }
+
+const CARD_STATUSES = ['Active', 'Waiting on Expedia', 'Do Not Charge'] as const;
 
 export function VirtualCardTable({ 
   cards, 
@@ -131,6 +139,17 @@ export function VirtualCardTable({
     setCurrentPage(1); // Reset to first page when changing page size
   };
 
+  const columns: ColumnConfig[] = [
+    { key: 'id', label: 'ID', sortable: true },
+    { key: 'guestName', label: 'Guest Name', sortable: true },
+    { key: 'Hotel', label: 'Hotel', sortable: true },
+    { key: 'checkInDate', label: 'Check In', sortable: true },
+    { key: 'checkOutDate', label: 'Check Out', sortable: true },
+    { key: 'remainingBalance', label: 'Balance', sortable: true },
+    { key: 'status', label: 'Status', sortable: true },
+    { key: 'bookingSource', label: 'Source', sortable: true }
+  ];
+
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
@@ -203,75 +222,21 @@ export function VirtualCardTable({
                   }}
                 />
               </th>
-              <th 
-                scope="col" 
-                className="px-6 py-3 cursor-pointer hover:bg-gray-100"
-                onClick={() => onSort('id')}
-              >
-                <div className="flex items-center gap-2">
-                  ID
-                  {renderSortIcon('id')}
-                </div>
-              </th>
-              <th 
-                scope="col" 
-                className="px-6 py-3 cursor-pointer hover:bg-gray-100"
-                onClick={() => onSort('guestName')}
-              >
-                <div className="flex items-center gap-2">
-                  Guest Name
-                  {renderSortIcon('guestName')}
-                </div>
-              </th>
-              <th 
-                scope="col" 
-                className="px-6 py-3 cursor-pointer hover:bg-gray-100"
-                onClick={() => onSort('Hotel')}
-              >
-                <div className="flex items-center gap-2">
-                  Hotel
-                  {renderSortIcon('Hotel')}
-                </div>
-              </th>
-              <th 
-                scope="col" 
-                className="px-6 py-3 cursor-pointer hover:bg-gray-100"
-                onClick={() => onSort('checkInDate')}
-              >
-                <div className="flex items-center gap-2">
-                  Check In
-                  {renderSortIcon('checkInDate')}
-                </div>
-              </th>
-              <th 
-                scope="col" 
-                className="px-6 py-3 cursor-pointer hover:bg-gray-100"
-                onClick={() => onSort('checkOutDate')}
-              >
-                <div className="flex items-center gap-2">
-                  Check Out
-                  {renderSortIcon('checkOutDate')}
-                </div>
-              </th>
-              <th 
-                scope="col" 
-                className="px-6 py-3 cursor-pointer hover:bg-gray-100"
-                onClick={() => onSort('remainingBalance')}
-              >
-                <div className="flex items-center gap-2">
-                  Amount
-                  {renderSortIcon('remainingBalance')}
-                </div>
-              </th>
-              <th 
-                scope="col" 
-                className="px-6 py-3 cursor-pointer hover:bg-gray-100"
-                onClick={() => onSort('status')}
-              >
-                <div className="flex items-center gap-2">
-                  Status
-                  {renderSortIcon('status')}
-                </div>
+              {columns.map((column) => (
+                <th
+                  key={column.key}
+                  scope="col"
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                  onClick={() => column.sortable && onSort(column.key)}
+                >
+                  <div className="flex items-center space-x-1">
+                    <span>{column.label}</span>
+                    {column.sortable && <ArrowUpDown className="h-4 w-4" />}
+                  </div>
+                </th>
+              ))}
+              <th scope="col" className="relative px-6 py-3">
+                <span className="sr-only">Actions</span>
               </th>
             </tr>
           </thead>
@@ -299,12 +264,41 @@ export function VirtualCardTable({
                 <td className="px-6 py-4 truncate">{card.checkInDate}</td>
                 <td className="px-6 py-4 truncate">{card.checkOutDate}</td>
                 <td className="px-6 py-4 truncate font-medium">{formatCurrency(card.remainingBalance, card.currency)}</td>
-                <td className="px-6 py-4">
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                    card.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                  }`}>
-                    {card.status}
-                  </span>
+                <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                  <select
+                    value={card.status}
+                    onChange={async (e) => {
+                      try {
+                        console.log('[Status Update] Starting update:', {
+                          cardId: card.id,
+                          oldStatus: card.status,
+                          newStatus: e.target.value
+                        });
+                        const updatedCard = await updateCardStatus(card.id, e.target.value);
+                        console.log('[Status Update] Update successful');
+                        
+                        // Call onUpdate with the updated card
+                        onUpdate(updatedCard);
+                      } catch (error) {
+                        console.error('[Status Update] Failed:', error);
+                      }
+                    }}
+                    className={`px-2 py-1 rounded text-xs font-medium border-0 ${
+                      card.status === 'Active' ? 'bg-green-100 text-green-800' : 
+                      card.status === 'Waiting on Expedia' ? 'bg-yellow-100 text-yellow-800' :
+                      'bg-red-100 text-red-800'
+                    }`}
+                  >
+                    {CARD_STATUSES.map((status) => (
+                      <option key={status} value={status}>
+                        {status}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+                <td className="px-6 py-4 truncate text-sm text-gray-500">{card.bookingSource || 'Unknown'}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                  {/* Actions */}
                 </td>
               </tr>
             ))}

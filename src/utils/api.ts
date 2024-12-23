@@ -1,13 +1,7 @@
 import axios, { AxiosRequestConfig, AxiosResponse, AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { VirtualCard } from '../types';
 
-// Determine if we're in development or production
-const isDevelopment = window.location.hostname === 'localhost';
-
-const baseURL = isDevelopment
-  ? 'http://localhost:5000'
-  : 'https://finance.hotelonline.co';
-
+const baseURL = import.meta.env.VITE_API_URL || window.location.origin;
 console.log('[API] Using base URL:', baseURL);
 
 const apiService = axios.create({
@@ -15,19 +9,25 @@ const apiService = axios.create({
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json'
-  }
+  },
+  withCredentials: false
 });
 
 // Add request interceptor for logging
 apiService.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
+    // Ensure we're using the correct base URL in production
+    if (import.meta.env.PROD) {
+      config.baseURL = window.location.origin;
+    }
+    
     console.log('[API Request]', {
       method: config.method,
       url: config.url,
       data: config.data,
       headers: config.headers,
-      baseURL: config.baseURL || baseURL,
-      fullURL: (config.baseURL || baseURL) + (config.url || '')
+      baseURL: config.baseURL,
+      fullURL: config.baseURL + (config.url || '')
     });
     return config;
   },
@@ -127,6 +127,22 @@ export const getReservations = async (): Promise<VirtualCard[]> => {
     console.error('[API] Failed to fetch reservations:', error);
     throw error;
   }
+};
+
+export const updateCardStatus = async (id: string, status: string): Promise<VirtualCard> => {
+  console.log('[API] Updating card status:', { id, status });
+  const response = await apiService.post('/api/cards/update-status', { id, status });
+  console.log('[API] Status update response:', response.data);
+  
+  // Fetch the updated card data
+  const updatedCard = await getReservations();
+  const card = updatedCard.find((c: VirtualCard) => c.id === id);
+  
+  if (!card) {
+    throw new Error('Card not found after update');
+  }
+  
+  return card;
 };
 
 export default apiService; 
